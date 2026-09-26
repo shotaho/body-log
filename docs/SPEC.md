@@ -97,7 +97,7 @@ workout_set    (id, workout_id, exercise_id, set_order, weight_kg, reps)
 
 ## 6. 開発ステップ
 1. ✅ プロジェクト雛形(Expo + TypeScript + expo-router + expo-sqlite、タブ構成、DB スキーマ、テーマ切替)
-2. 体重の手動記録・一覧・グラフ
+2. ✅ 体重の手動記録・一覧・グラフ
 3. 筋トレ記録(種目マスタ・セット入力・前回コピー)
 4. BLE 受信(体重のみ)→ 体組成算出
 5. エクスポート/インポート、ホーム・カレンダー

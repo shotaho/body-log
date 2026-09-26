@@ -15,6 +15,10 @@ export const Colors = {
     border: '#D9D9E0',
     primary: '#208AEF',
     onPrimary: '#ffffff',
+    danger: '#D93036',
+    // グラフ: 主系列(7日平均)は検証済みの categorical slot 1、日ごとの値は控えめなグレー
+    chartSeries: '#2a78d6',
+    chartMuted: '#A0A3AB',
   },
   dark: {
     text: '#ffffff',
@@ -25,6 +29,9 @@ export const Colors = {
     border: '#3A3D42',
     primary: '#4BA3F5',
     onPrimary: '#000000',
+    danger: '#FF6369',
+    chartSeries: '#3987e5',
+    chartMuted: '#62656C',
   },
 } as const;
 

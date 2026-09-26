@@ -6,9 +6,14 @@ export function toLocalDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** その日のローカル 0:00。 */
+export function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
 /** その週の月曜日 0:00(ローカル時刻)。 */
 export function startOfWeek(date: Date): Date {
-  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const result = startOfDay(date);
   const daysSinceMonday = (result.getDay() + 6) % 7;
   result.setDate(result.getDate() - daysSinceMonday);
   return result;
