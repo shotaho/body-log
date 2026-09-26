@@ -6,6 +6,12 @@ export function toLocalDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** 'YYYY-MM-DD' をローカル 0:00 の Date に。 */
+export function fromLocalDateString(date: string): Date {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** その日のローカル 0:00。 */
 export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());

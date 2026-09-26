@@ -15,9 +15,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function DateTimeField({
   value,
   onChange,
+  mode = 'datetime',
 }: {
   value: Date;
   onChange: (date: Date) => void;
+  /** 'date' のときは日付だけを入力する */
+  mode?: 'datetime' | 'date';
 }) {
   const theme = useTheme();
 
@@ -25,7 +28,7 @@ export function DateTimeField({
     return (
       <DateTimePicker
         value={value}
-        mode="datetime"
+        mode={mode}
         maximumDate={new Date()}
         onValueChange={(_, date) => onChange(date)}
       />
@@ -59,13 +62,15 @@ export function DateTimeField({
         style={[styles.button, { borderColor: theme.border, flex: 1 }]}>
         <ThemedText>{`${value.getFullYear()}年${formatDateJa(value)}`}</ThemedText>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="時刻を選択"
-        onPress={() => open('time')}
-        style={[styles.button, { borderColor: theme.border }]}>
-        <ThemedText>{`${pad(value.getHours())}:${pad(value.getMinutes())}`}</ThemedText>
-      </Pressable>
+      {mode === 'datetime' && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="時刻を選択"
+          onPress={() => open('time')}
+          style={[styles.button, { borderColor: theme.border }]}>
+          <ThemedText>{`${pad(value.getHours())}:${pad(value.getMinutes())}`}</ThemedText>
+        </Pressable>
+      )}
     </View>
   );
 }

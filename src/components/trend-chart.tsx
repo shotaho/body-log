@@ -15,11 +15,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_DOTS = 45;
 
 type Props = {
-  /** 日ごとの値(控えめに表示) */
+  /** 日ごとの値。average があるときは控えめに、ないときは主系列として描く */
   daily: DailyPoint[];
-  /** 7日移動平均(主系列) */
-  average: DailyPoint[];
+  /** 7日移動平均(主系列)。省略すると daily だけの1系列グラフになる */
+  average?: DailyPoint[];
   unit: string;
+  /** 値の表示形式(ツールチップ)。既定は小数点第1位 */
+  formatValue?: (value: number) => string;
   /** 表示期間の開始・終了(ローカル 0:00 のエポックミリ秒) */
   from: number;
   to: number;
@@ -31,10 +33,10 @@ const shortDate = (time: number) => {
 };
 
 /**
- * 1軸の推移グラフ。日ごとの値をグレー、7日平均を青の 2px 線で描く。
+ * 1軸の推移グラフ。日ごとの値をグレー、7日平均を青の 2px 線で描く(average 省略時は日ごとの値を青で)。
  * タッチ(ドラッグ)で最も近い日を選び、十字線とツールチップで値を表示する。
  */
-export function TrendChart({ daily, average, unit, from, to }: Props) {
+export function TrendChart({ daily, average, unit, formatValue = format1, from, to }: Props) {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -43,7 +45,7 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
     if (width === 0 || daily.length === 0) {
       return null;
     }
-    const values = [...daily, ...average].map((p) => p.value);
+    const values = [...daily, ...(average ?? [])].map((p) => p.value);
     const ticks = niceTicks(Math.min(...values), Math.max(...values));
     const yMin = ticks[0];
     const yMax = ticks[ticks.length - 1];
@@ -61,7 +63,7 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
       x,
       y,
       dailyPath: path(daily),
-      averagePath: path(average),
+      averagePath: average ? path(average) : null,
       xLabels: [from, from + (to - from) / 2, to].map((t) => ({ t, label: shortDate(t) })),
     };
   }, [width, daily, average, from, to]);
@@ -87,14 +89,20 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
 
   const selectedIndex = selected != null && selected < daily.length ? selected : null;
   const selectedPoint = selectedIndex != null ? daily[selectedIndex] : null;
-  const selectedAverage = selectedIndex != null ? average[selectedIndex] : null;
+  const selectedAverage = selectedIndex != null && average ? average[selectedIndex] : null;
+  // 1系列のときは日ごとの値が主系列
+  const dailyColor = average ? theme.chartMuted : theme.chartSeries;
+  const format = (v: number) => `${formatValue(v)} ${unit}`;
 
   return (
     <View>
-      <View style={styles.legend}>
-        <LegendKey color={theme.chartSeries} label="7日平均" line />
-        <LegendKey color={theme.chartMuted} label="日ごとの値" />
-      </View>
+      {/* 凡例は2系列のときだけ(1系列ならカードのタイトルが系列名を兼ねる) */}
+      {average && (
+        <View style={styles.legend}>
+          <LegendKey color={theme.chartSeries} label="7日平均" line />
+          <LegendKey color={theme.chartMuted} label="日ごとの値" />
+        </View>
+      )}
 
       <View
         style={styles.plot}
@@ -122,10 +130,11 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
 
               <Path
                 d={layout.dailyPath}
-                stroke={theme.chartMuted}
-                strokeWidth={1}
+                stroke={dailyColor}
+                strokeWidth={average ? 1 : 2}
                 fill="none"
                 strokeLinejoin="round"
+                strokeLinecap="round"
               />
               {daily.length <= MAX_DOTS &&
                 daily.map((p) => (
@@ -134,22 +143,24 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
                     cx={layout.x(p.time)}
                     cy={layout.y(p.value)}
                     r={4}
-                    fill={theme.chartMuted}
+                    fill={dailyColor}
                     stroke={theme.backgroundElement}
                     strokeWidth={2}
                   />
                 ))}
 
-              <Path
-                d={layout.averagePath}
-                stroke={theme.chartSeries}
-                strokeWidth={2}
-                fill="none"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
+              {layout.averagePath && (
+                <Path
+                  d={layout.averagePath}
+                  stroke={theme.chartSeries}
+                  strokeWidth={2}
+                  fill="none"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )}
 
-              {selectedPoint && selectedAverage && (
+              {selectedPoint && (
                 <>
                   <Line
                     x1={layout.x(selectedPoint.time)}
@@ -163,18 +174,20 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
                     cx={layout.x(selectedPoint.time)}
                     cy={layout.y(selectedPoint.value)}
                     r={5}
-                    fill={theme.chartMuted}
+                    fill={dailyColor}
                     stroke={theme.backgroundElement}
                     strokeWidth={2}
                   />
-                  <Circle
-                    cx={layout.x(selectedAverage.time)}
-                    cy={layout.y(selectedAverage.value)}
-                    r={5}
-                    fill={theme.chartSeries}
-                    stroke={theme.backgroundElement}
-                    strokeWidth={2}
-                  />
+                  {selectedAverage && (
+                    <Circle
+                      cx={layout.x(selectedAverage.time)}
+                      cy={layout.y(selectedAverage.value)}
+                      r={5}
+                      fill={theme.chartSeries}
+                      stroke={theme.backgroundElement}
+                      strokeWidth={2}
+                    />
+                  )}
                 </>
               )}
             </Svg>
@@ -206,7 +219,7 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
               </ThemedText>
             ))}
 
-          {layout && selectedPoint && selectedAverage && (
+          {layout && selectedPoint && (
             <View
               style={[
                 styles.tooltip,
@@ -216,17 +229,19 @@ export function TrendChart({ daily, average, unit, from, to }: Props) {
                   : { left: layout.x(selectedPoint.time) + Spacing.two },
               ]}>
               <ThemedText type="smallBold">{shortDate(selectedPoint.time)}</ThemedText>
-              <TooltipRow
-                color={theme.chartMuted}
-                label="値"
-                value={`${format1(selectedPoint.value)} ${unit}`}
-              />
-              <TooltipRow
-                color={theme.chartSeries}
-                label="7日平均"
-                value={`${format1(selectedAverage.value)} ${unit}`}
-                line
-              />
+              {selectedAverage ? (
+                <>
+                  <TooltipRow color={dailyColor} label="値" value={format(selectedPoint.value)} />
+                  <TooltipRow
+                    color={theme.chartSeries}
+                    label="7日平均"
+                    value={format(selectedAverage.value)}
+                    line
+                  />
+                </>
+              ) : (
+                <ThemedText type="smallBold">{format(selectedPoint.value)}</ThemedText>
+              )}
             </View>
           )}
         </View>
