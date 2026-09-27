@@ -27,10 +27,12 @@ npm test
 ```
 src/
 ├── app/            画面(expo-router のルート)。タブ: ホーム / 体重 / 筋トレ / 設定
+├── ble/            体重計(Mi Body Composition Scale 2)の BLE スキャン
 ├── components/     共通 UI コンポーネント
 ├── constants/      テーマカラーなど
-├── db/             SQLite スキーマ・マイグレーション・クエリ
+├── db/             SQLite スキーマ・マイグレーション・クエリ・バックアップ
+│                   (テストは node:sqlite 上で実際の SQL を実行)
 ├── hooks/
-├── lib/            日付・数値(小数点第1位丸め)などの純粋関数
+├── lib/            日付・数値・集計・体重計データ解析・体組成計算などの純粋関数
 └── theme/          テーマ設定(システム/ライト/ダーク)
 ```

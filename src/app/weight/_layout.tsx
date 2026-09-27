@@ -4,6 +4,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
 
+// ホームのカレンダーなど他のタブから詳細画面を直接開いたときも、戻る先に一覧があるようにする
+export const unstable_settings = { initialRouteName: 'index' };
+
 export default function WeightLayout() {
   const theme = useTheme();
   return (

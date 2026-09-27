@@ -1,5 +1,8 @@
 import { Stack } from 'expo-router';
 
+// ホームのカレンダーなど他のタブから詳細画面を直接開いたときも、戻る先に一覧があるようにする
+export const unstable_settings = { initialRouteName: 'index' };
+
 export default function WorkoutLayout() {
   return (
     <Stack>

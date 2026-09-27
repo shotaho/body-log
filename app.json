@@ -44,7 +44,8 @@
           "neverForLocation": true,
           "bluetoothAlwaysPermission": "体重計から体重を受信するために Bluetooth を使用します"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

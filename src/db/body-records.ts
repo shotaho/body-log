@@ -160,3 +160,18 @@ export async function insertScaleRecord(
   );
   return result.changes > 0;
 }
+
+/** 期間内(from 以上 to 未満)の記録を古い順に。 */
+export async function listBodyRecordsBetween(
+  db: SQLiteDatabase,
+  from: Date,
+  to: Date
+): Promise<BodyRecord[]> {
+  const rows = await db.getAllAsync<Row>(
+    `SELECT ${COLUMNS} FROM body_record WHERE measured_at >= ? AND measured_at < ?
+     ORDER BY measured_at, id`,
+    from.getTime(),
+    to.getTime()
+  );
+  return rows.map(fromRow);
+}

@@ -1,5 +1,8 @@
 import Constants from 'expo-constants';
+import * as DocumentPicker from 'expo-document-picker';
+import { File, Paths } from 'expo-file-system';
 import { useFocusEffect } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
@@ -11,6 +14,14 @@ import { Screen } from '@/components/screen';
 import { SegmentedControl } from '@/components/segmented-control';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
+import {
+  backupFileName,
+  exportBackup,
+  importBackup,
+  InvalidBackupError,
+  parseBackup,
+  type Backup,
+} from '@/db/backup';
 import { getProfile, saveProfile, type Profile } from '@/db/profile';
 import { getRegisteredScale, unregisterScale, type ScaleDevice } from '@/db/scale-devices';
 import { fromLocalDateString, toLocalDateString } from '@/lib/date';
@@ -40,16 +51,83 @@ export default function SettingsScreen() {
   const [height, setHeight] = useState('');
   const [heightError, setHeightError] = useState<string>();
   const [scale, setScale] = useState<ScaleDevice | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      getProfile(db).then((p) => {
-        setProfile(p);
-        setHeight(p.heightCm != null ? format1(p.heightCm) : '');
+  const reload = useCallback(() => {
+    getProfile(db).then((p) => {
+      setProfile(p);
+      setHeight(p.heightCm != null ? format1(p.heightCm) : '');
+    });
+    getRegisteredScale(db).then(setScale);
+  }, [db]);
+
+  useFocusEffect(reload);
+
+  const exportData = async () => {
+    setBusy(true);
+    try {
+      const now = new Date();
+      const file = new File(Paths.cache, backupFileName(now));
+      if (file.exists) {
+        file.delete();
+      }
+      file.create();
+      file.write(JSON.stringify(await exportBackup(db, now)));
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/json',
+        dialogTitle: 'バックアップの保存先を選択',
       });
-      getRegisteredScale(db).then(setScale);
-    }, [db])
-  );
+    } catch (e) {
+      Alert.alert('書き出しに失敗しました', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreData = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: ['application/json', 'text/plain', '*/*'],
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled) {
+      return;
+    }
+    let backup: Backup;
+    try {
+      backup = parseBackup(await new File(picked.assets[0].uri).text());
+    } catch (e) {
+      const message = e instanceof InvalidBackupError ? e.message : String(e);
+      Alert.alert('読み込めませんでした', message);
+      return;
+    }
+    const exportedAt = new Date(backup.exportedAt).toLocaleString('ja-JP');
+    Alert.alert(
+      'バックアップから復元しますか?',
+      `${exportedAt} のバックアップ(体重 ${backup.tables.body_record.length} 件、ワークアウト ${backup.tables.workout.length} 件)で、今のデータをすべて置き換えます。`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '復元',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await importBackup(db, backup);
+              reload();
+              Alert.alert('復元しました');
+            } catch (e) {
+              Alert.alert(
+                '復元に失敗しました',
+                `データは変更されていません。\n${e instanceof Error ? e.message : String(e)}`
+              );
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const updateProfile = (next: Profile) => {
     setProfile(next);
@@ -145,6 +223,15 @@ export default function SettingsScreen() {
             未登録です。体重タブの計測画面で体重計に乗ると登録できます。
           </ThemedText>
         )}
+      </Card>
+
+      <Card title="バックアップ">
+        <ThemedText type="small" themeColor="textSecondary">
+          すべての記録を JSON
+          ファイルに書き出します。機種変更のときは、新しい端末で「復元」から読み込んでください。
+        </ThemedText>
+        <Button title="書き出す" onPress={exportData} disabled={busy} />
+        <Button title="復元" variant="danger" onPress={restoreData} disabled={busy} />
       </Card>
 
       <Card title="アプリ情報">
