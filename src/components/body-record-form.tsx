@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, ScrollView, StyleSheet } from 'react-native';
 
 import { Button } from '@/components/button';
+import { Card } from '@/components/card';
+import { CompositionList } from '@/components/composition-list';
 import { DateTimeField } from '@/components/date-time-field';
 import { TextField } from '@/components/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -88,6 +90,11 @@ export function BodyRecordForm({ initial, placeholderWeightKg, onSubmit, onDelet
           error={errors.bodyFat}
         />
         <TextField label="メモ(任意)" value={note} onChangeText={setNote} multiline />
+        {initial?.source === 'scale' && (
+          <Card title="体重計で計測した体組成">
+            <CompositionList values={{ ...initial.composition, bodyFatPct: null }} />
+          </Card>
+        )}
         <Button title="保存" onPress={submit} disabled={saving} />
         {onDelete && <Button title="削除" variant="danger" onPress={confirmDelete} />}
       </ScrollView>

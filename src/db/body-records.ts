@@ -9,6 +9,16 @@ export type BodyRecord = {
   bodyFatPct: number | null;
   source: 'manual' | 'scale';
   note: string | null;
+  /** 体重計から取得した場合の体組成(手動入力では null) */
+  composition: {
+    muscleKg: number | null;
+    waterPct: number | null;
+    boneKg: number | null;
+    visceralFat: number | null;
+    bmrKcal: number | null;
+    bmi: number | null;
+    impedance: number | null;
+  };
 };
 
 export type BodyRecordInput = {
@@ -25,9 +35,17 @@ type Row = {
   body_fat_pct: number | null;
   source: 'manual' | 'scale';
   note: string | null;
+  muscle_kg: number | null;
+  water_pct: number | null;
+  bone_kg: number | null;
+  visceral_fat: number | null;
+  bmr_kcal: number | null;
+  bmi: number | null;
+  impedance: number | null;
 };
 
-const COLUMNS = 'id, measured_at, weight_kg, body_fat_pct, source, note';
+const COLUMNS = `id, measured_at, weight_kg, body_fat_pct, source, note,
+  muscle_kg, water_pct, bone_kg, visceral_fat, bmr_kcal, bmi, impedance`;
 
 function fromRow(row: Row): BodyRecord {
   return {
@@ -37,6 +55,15 @@ function fromRow(row: Row): BodyRecord {
     bodyFatPct: row.body_fat_pct,
     source: row.source,
     note: row.note,
+    composition: {
+      muscleKg: row.muscle_kg,
+      waterPct: row.water_pct,
+      boneKg: row.bone_kg,
+      visceralFat: row.visceral_fat,
+      bmrKcal: row.bmr_kcal,
+      bmi: row.bmi,
+      impedance: row.impedance,
+    },
   };
 }
 
@@ -81,4 +108,55 @@ export async function updateBodyRecord(
 
 export async function deleteBodyRecord(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM body_record WHERE id = ?', id);
+}
+
+export type ScaleRecordInput = {
+  /** 体重計ID + 体重計の時計。同じ計測の二重保存防止に使う */
+  scaleKey: string;
+  measuredAt: number;
+  weightKg: number;
+  impedance: number | null;
+  bmi: number | null;
+  bodyFatPct: number | null;
+  muscleKg: number | null;
+  waterPct: number | null;
+  boneKg: number | null;
+  visceralFat: number | null;
+  bmrKcal: number | null;
+};
+
+const round1OrNull = (v: number | null) => (v == null ? null : round1(v));
+
+/** その計測がすでに保存済みか。 */
+export async function hasScaleRecord(db: SQLiteDatabase, scaleKey: string): Promise<boolean> {
+  const row = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM body_record WHERE scale_key = ?',
+    scaleKey
+  );
+  return row != null;
+}
+
+/** 体重計からの記録を保存する。同じ計測が保存済みなら何もせず false。 */
+export async function insertScaleRecord(
+  db: SQLiteDatabase,
+  input: ScaleRecordInput
+): Promise<boolean> {
+  const result = await db.runAsync(
+    `INSERT OR IGNORE INTO body_record (
+       measured_at, weight_kg, body_fat_pct, muscle_kg, water_pct, bone_kg, visceral_fat,
+       bmr_kcal, bmi, impedance, source, scale_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scale', ?)`,
+    input.measuredAt,
+    round1(input.weightKg),
+    round1OrNull(input.bodyFatPct),
+    round1OrNull(input.muscleKg),
+    round1OrNull(input.waterPct),
+    round1OrNull(input.boneKg),
+    round1OrNull(input.visceralFat),
+    input.bmrKcal == null ? null : Math.round(input.bmrKcal),
+    round1OrNull(input.bmi),
+    input.impedance,
+    input.scaleKey
+  );
+  return result.changes > 0;
 }

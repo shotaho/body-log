@@ -113,6 +113,11 @@ const MIGRATIONS: string[] = [
   INSERT INTO exercise (name, body_part, is_preset) VALUES
   ${PRESET_EXERCISES.map(([name, part]) => `(${sqlString(name)}, ${sqlString(part)}, 1)`).join(',\n  ')};
   `,
+  // v2: 体重計の同じ計測を二重に保存しないためのキー(体重計ID + 体重計の時計)
+  `
+  ALTER TABLE body_record ADD COLUMN scale_key TEXT;
+  CREATE UNIQUE INDEX idx_body_record_scale_key ON body_record (scale_key) WHERE scale_key IS NOT NULL;
+  `,
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

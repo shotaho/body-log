@@ -35,7 +35,16 @@
         }
       ],
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [],
+          "neverForLocation": true,
+          "bluetoothAlwaysPermission": "体重計から体重を受信するために Bluetooth を使用します"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

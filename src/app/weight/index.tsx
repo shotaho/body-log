@@ -88,7 +88,8 @@ export default function WeightScreen() {
       {records.length === 0 ? (
         <Card>
           <ThemedText themeColor="textSecondary">まだ記録がありません</ThemedText>
-          <Button title="体重を記録する" onPress={() => router.push('/weight/new')} />
+          <Button title="体重計で測る" onPress={() => router.push('/weight/scale')} />
+          <Button title="手入力で記録する" onPress={() => router.push('/weight/new')} />
         </Card>
       ) : (
         <>

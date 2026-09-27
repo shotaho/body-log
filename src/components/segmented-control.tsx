@@ -27,9 +27,7 @@ export function SegmentedControl<T extends string>({
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
             style={[styles.segment, selected && { backgroundColor: theme.primary }]}>
-            <ThemedText
-              type="smallBold"
-              style={{ color: selected ? theme.onPrimary : theme.text }}>
+            <ThemedText type="smallBold" style={{ color: selected ? theme.onPrimary : theme.text }}>
               {option.label}
             </ThemedText>
           </Pressable>
