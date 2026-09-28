@@ -12,6 +12,8 @@ import { listWorkouts, type WorkoutSummary } from '@/db/workouts';
 import { useOpenWorkout } from '@/hooks/use-open-workout';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateJa, fromLocalDateString, toLocalDateString } from '@/lib/date';
+import { format1 } from '@/lib/decimal';
+import { formatSet } from '@/lib/workout-stats';
 
 const formatVolume = (kg: number) => `${Math.round(kg).toLocaleString('ja-JP')} kg`;
 
@@ -37,15 +39,18 @@ export default function WorkoutListScreen() {
 
   const header = (
     <View style={styles.header}>
-      <Button
-        title="今日のトレーニングを記録"
-        onPress={() => openWorkout(toLocalDateString(new Date()))}
-      />
-      <Button
-        title="日付を選んで記録"
-        variant="secondary"
-        onPress={() => pickDate(new Date(), (date) => openWorkout(toLocalDateString(date)))}
-      />
+      <View style={styles.actions}>
+        <View style={styles.flex}>
+          <Button title="今日を記録" onPress={() => openWorkout(toLocalDateString(new Date()))} />
+        </View>
+        <View style={styles.flex}>
+          <Button
+            title="日付を選んで記録"
+            variant="secondary"
+            onPress={() => pickDate(new Date(), (date) => openWorkout(toLocalDateString(date)))}
+          />
+        </View>
+      </View>
       <Card>
         <LinkRow label="種目別の記録・グラフ" onPress={() => router.push('/workout/exercises')} />
         <View style={[styles.separator, { backgroundColor: theme.border }]} />
@@ -85,10 +90,24 @@ export default function WorkoutListScreen() {
               {item.setCount}セット · {formatVolume(item.volumeKg)}
             </ThemedText>
           </View>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-            {item.exerciseNames.length > 0 ? item.exerciseNames.join('・') : '(セットなし)'}
-            {item.note ? `  — ${item.note}` : ''}
-          </ThemedText>
+          {item.exercises.length === 0 && (
+            <ThemedText type="small" themeColor="textSecondary">
+              (セットなし)
+            </ThemedText>
+          )}
+          {item.exercises.map((e) => (
+            <View key={e.exerciseId} style={styles.exercise}>
+              <ThemedText type="smallBold">{e.name}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {e.sets.map((set) => formatSet(set, format1)).join(' / ')}
+              </ThemedText>
+            </View>
+          ))}
+          {item.note ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              メモ: {item.note}
+            </ThemedText>
+          ) : null}
         </Pressable>
       )}
     />
@@ -122,6 +141,13 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     marginBottom: Spacing.two,
   },
+  actions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  exercise: {
+    gap: Spacing.half,
+  },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -129,7 +155,7 @@ const styles = StyleSheet.create({
   },
   row: {
     paddingVertical: Spacing.three,
-    gap: Spacing.half,
+    gap: Spacing.two,
   },
   rowTop: {
     flexDirection: 'row',

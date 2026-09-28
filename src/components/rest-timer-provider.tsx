@@ -9,8 +9,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { getSetting, setSetting } from '@/db/settings';
+import { cancelRestAlerts, scheduleRestAlerts } from '@/lib/rest-notifications';
 import {
   beepFor,
   DEFAULT_REST_SECONDS,
@@ -45,7 +47,8 @@ function replay(player: AudioPlayer) {
 
 /**
  * アプリ全体で1つのレストタイマー。画面を移動しても動き続ける。
- * 残り10秒と0秒で音を1回ずつ鳴らす(アプリ表示中のみ。音量・マナーモードは端末の設定に従う)。
+ * 残り10秒と0秒で音を1回ずつ鳴らす(音量・マナーモードは端末の設定に従う)。
+ * アプリ表示中はアプリ内の音、画面オフ・バックグラウンドでは予約した通知の音で鳴らす。
  */
 export function RestTimerProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
@@ -65,6 +68,15 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
     });
   }, [db]);
 
+  // 画面オフでも鳴るよう、終了時刻に合わせて通知を予約し直す(止まったら取り消す)
+  useEffect(() => {
+    if (timer && timer.skippedAt == null && timer.endAt > Date.now()) {
+      scheduleRestAlerts(timer.endAt);
+    } else {
+      cancelRestAlerts();
+    }
+  }, [timer]);
+
   // タイマー動作中だけ時計を回す
   useEffect(() => {
     if (!timer || timer.skippedAt != null) {
@@ -74,10 +86,9 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
     const tick = () => {
       const current = remainingSeconds(timer.endAt, Date.now());
       const beep = beepFor(previousRemaining.current, current);
-      if (beep === 'warning') {
-        replay(warningPlayer);
-      } else if (beep === 'end') {
-        replay(endPlayer);
+      // バックグラウンドでは通知が鳴るので、二重に鳴らさない
+      if (beep && AppState.currentState !== 'background') {
+        replay(beep === 'warning' ? warningPlayer : endPlayer);
       }
       previousRemaining.current = current;
       setRemaining(current);

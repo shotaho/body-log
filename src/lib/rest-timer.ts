@@ -86,3 +86,13 @@ export function setTimings(
   }
   return timings;
 }
+
+export type RestAlert = { kind: 'warning' | 'end'; at: number };
+
+/** 画面オフ用に予約する通知の時刻(残り10秒と終了。過去の時刻のものは除く)。 */
+export function restAlerts(endAt: number, now: number): RestAlert[] {
+  return [
+    { kind: 'warning' as const, at: endAt - WARNING_SECONDS * 1000 },
+    { kind: 'end' as const, at: endAt },
+  ].filter((a) => a.at > now);
+}

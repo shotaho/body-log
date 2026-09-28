@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { getActivityDates, getDayWorkouts, type DayWorkout } from '@/db/activity';
 import { listBodyRecordsBetween, type BodyRecord } from '@/db/body-records';
+import { useOnDataChanged } from '@/hooks/use-data-changed';
 import { useOpenWorkout } from '@/hooks/use-open-workout';
 import { addMonths } from '@/lib/calendar';
 import { formatDateJa, fromLocalDateString, startOfWeek, toLocalDateString } from '@/lib/date';
@@ -49,62 +50,72 @@ export default function HomeScreen() {
     weighDates: new Set(),
   });
   const [selected, setSelected] = useState<string>(today);
-  const [day, setDay] = useState<{ records: BodyRecord[]; workouts: DayWorkout[] } | null>(null);
+  const [day, setDay] = useState<{
+    records: BodyRecord[];
+    workouts: DayWorkout[];
+  } | null>(null);
   const openWorkout = useOpenWorkout();
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      (async () => {
-        const [latest, previous] = await db.getAllAsync<{ weight_kg: number; measured_at: number }>(
-          'SELECT weight_kg, measured_at FROM body_record ORDER BY measured_at DESC, id DESC LIMIT 2'
-        );
-        const week = await db.getFirstAsync<{ n: number }>(
-          `SELECT COUNT(DISTINCT date) AS n FROM workout w WHERE date >= ?
+  const loadSummary = useCallback(() => {
+    let active = true;
+    (async () => {
+      const [latest, previous] = await db.getAllAsync<{
+        weight_kg: number;
+        measured_at: number;
+      }>(
+        'SELECT weight_kg, measured_at FROM body_record ORDER BY measured_at DESC, id DESC LIMIT 2'
+      );
+      const week = await db.getFirstAsync<{ n: number }>(
+        `SELECT COUNT(DISTINCT date) AS n FROM workout w WHERE date >= ?
            AND EXISTS (SELECT 1 FROM workout_set s WHERE s.workout_id = w.id)`,
-          toLocalDateString(startOfWeek(new Date()))
-        );
-        if (active) {
-          setSummary({
-            latest: latest ? { weightKg: latest.weight_kg, measuredAt: latest.measured_at } : null,
-            deltaKg: latest && previous ? latest.weight_kg - previous.weight_kg : null,
-            trainingDaysThisWeek: week?.n ?? 0,
-          });
-        }
-      })();
-      return () => {
-        active = false;
-      };
-    }, [db])
-  );
+        toLocalDateString(startOfWeek(new Date()))
+      );
+      if (active) {
+        setSummary({
+          latest: latest ? { weightKg: latest.weight_kg, measuredAt: latest.measured_at } : null,
+          deltaKg: latest && previous ? latest.weight_kg - previous.weight_kg : null,
+          trainingDaysThisWeek: week?.n ?? 0,
+        });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [db]);
+  useFocusEffect(loadSummary);
 
   // 表示中の月の印
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      const from = new Date(month.year, month.month, 1);
-      const to = new Date(month.year, month.month + 1, 1);
-      getActivityDates(db, from, to).then((a) => active && setActivity(a));
-      return () => {
-        active = false;
-      };
-    }, [db, month])
-  );
+  const loadActivity = useCallback(() => {
+    let active = true;
+    const from = new Date(month.year, month.month, 1);
+    const to = new Date(month.year, month.month + 1, 1);
+    getActivityDates(db, from, to).then((a) => active && setActivity(a));
+    return () => {
+      active = false;
+    };
+  }, [db, month]);
+  useFocusEffect(loadActivity);
 
   // 選択した日の内容
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      const from = fromLocalDateString(selected);
-      const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
-      Promise.all([listBodyRecordsBetween(db, from, to), getDayWorkouts(db, selected)]).then(
-        ([records, workouts]) => active && setDay({ records, workouts })
-      );
-      return () => {
-        active = false;
-      };
-    }, [db, selected])
-  );
+  const loadDay = useCallback(() => {
+    let active = true;
+    const from = fromLocalDateString(selected);
+    const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
+    Promise.all([listBodyRecordsBetween(db, from, to), getDayWorkouts(db, selected)]).then(
+      ([records, workouts]) => active && setDay({ records, workouts })
+    );
+    return () => {
+      active = false;
+    };
+  }, [db, selected]);
+  useFocusEffect(loadDay);
+
+  // 表示中に体重が自動で記録されたら反映する
+  useOnDataChanged('body_record', () => {
+    loadSummary();
+    loadActivity();
+    loadDay();
+  });
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
@@ -139,8 +150,12 @@ export default function HomeScreen() {
             today={today}
             selected={selected}
             onSelect={setSelected}
+            onDoubleSelect={(date) => date <= today && openWorkout(date)}
             onChangeMonth={(delta) => setMonth((m) => addMonths(m.year, m.month, delta))}
           />
+          <ThemedText type="small" themeColor="textSecondary">
+            日付を2回タップすると、その日のトレーニング記録を開きます
+          </ThemedText>
         </Card>
 
         <Card title={formatDateJa(fromLocalDateString(selected))}>
@@ -153,7 +168,12 @@ export default function HomeScreen() {
               <Pressable
                 key={`r${r.id}`}
                 accessibilityRole="button"
-                onPress={() => router.push({ pathname: '/weight/[id]', params: { id: r.id } })}
+                onPress={() =>
+                  router.push({
+                    pathname: '/weight/[id]',
+                    params: { id: r.id },
+                  })
+                }
                 style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}>
                 <ThemedText themeColor="textSecondary" style={styles.time}>
                   {pad(t.getHours())}:{pad(t.getMinutes())}

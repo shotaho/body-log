@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { TrendChart } from '@/components/trend-chart';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { listBodyRecords, type BodyRecord } from '@/db/body-records';
+import { useOnDataChanged } from '@/hooks/use-data-changed';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateJa, startOfDay } from '@/lib/date';
 import { format1 } from '@/lib/decimal';
@@ -49,15 +50,16 @@ export default function WeightScreen() {
   const [records, setRecords] = useState<BodyRecord[] | null>(null);
   const [range, setRange] = useState<Range>('month');
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      listBodyRecords(db).then((rows) => active && setRecords(rows));
-      return () => {
-        active = false;
-      };
-    }, [db])
-  );
+  const load = useCallback(() => {
+    let active = true;
+    listBodyRecords(db).then((rows) => active && setRecords(rows));
+    return () => {
+      active = false;
+    };
+  }, [db]);
+  useFocusEffect(load);
+  // 表示中に体重が自動で記録されたら反映する
+  useOnDataChanged('body_record', load);
 
   const charts = useMemo(() => {
     if (!records || records.length === 0) {

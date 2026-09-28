@@ -14,6 +14,10 @@ jest.mock('expo-audio', () => ({
 }));
 jest.mock('@/assets/sounds/rest-warning.wav', () => 'warning');
 jest.mock('@/assets/sounds/rest-end.wav', () => 'end');
+jest.mock('@/lib/rest-notifications', () => ({
+  scheduleRestAlerts: jest.fn(() => Promise.resolve()),
+  cancelRestAlerts: jest.fn(() => Promise.resolve()),
+}));
 jest.mock('expo-sqlite', () => ({ useSQLiteContext: () => ({}) }));
 jest.mock('@/db/settings', () => ({
   getSetting: () => Promise.resolve('30'),

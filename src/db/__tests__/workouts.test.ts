@@ -70,6 +70,17 @@ describe('ワークアウト', () => {
       setCount: 3,
       volumeKg: 500 + 600 + 500,
       exerciseNames: ['スクワット', 'ベンチプレス'],
+      exercises: [
+        { exerciseId: squat, name: 'スクワット', sets: [{ weightKg: 100, reps: 5 }] },
+        {
+          exerciseId: bench,
+          name: 'ベンチプレス',
+          sets: [
+            { weightKg: 60, reps: 10 },
+            { weightKg: 62.5, reps: 8 },
+          ],
+        },
+      ],
     });
   });
 

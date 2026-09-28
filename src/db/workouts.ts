@@ -31,6 +31,14 @@ export type WorkoutSummary = Workout & {
   volumeKg: number;
   /** 種目名(ワークアウト内で最初に行った順) */
   exerciseNames: string[];
+  /** 種目ごとのセット(種目はワークアウト内で最初に行った順、セットは記録順) */
+  exercises: WorkoutExerciseSummary[];
+};
+
+export type WorkoutExerciseSummary = {
+  exerciseId: number;
+  name: string;
+  sets: { weightKg: number; reps: number }[];
 };
 
 type SetRow = {
@@ -122,14 +130,27 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary[]
      FROM workout w LEFT JOIN workout_set s ON s.workout_id = w.id
      GROUP BY w.id ORDER BY w.date DESC, w.id DESC`
   );
-  const names = await db.getAllAsync<{ workout_id: number; name: string }>(
-    `SELECT s.workout_id, e.name, MIN(s.set_order) AS first_order
+  const sets = await db.getAllAsync<{
+    workout_id: number;
+    exercise_id: number;
+    name: string;
+    weight_kg: number;
+    reps: number;
+  }>(
+    `SELECT s.workout_id, s.exercise_id, e.name, s.weight_kg, s.reps
      FROM workout_set s JOIN exercise e ON e.id = s.exercise_id
-     GROUP BY s.workout_id, s.exercise_id ORDER BY s.workout_id, first_order`
+     ORDER BY s.workout_id, s.set_order, s.id`
   );
-  const namesByWorkout = new Map<number, string[]>();
-  for (const n of names) {
-    namesByWorkout.set(n.workout_id, [...(namesByWorkout.get(n.workout_id) ?? []), n.name]);
+  const exercisesByWorkout = new Map<number, WorkoutExerciseSummary[]>();
+  for (const row of sets) {
+    const exercises = exercisesByWorkout.get(row.workout_id) ?? [];
+    exercisesByWorkout.set(row.workout_id, exercises);
+    let exercise = exercises.find((e) => e.exerciseId === row.exercise_id);
+    if (!exercise) {
+      exercise = { exerciseId: row.exercise_id, name: row.name, sets: [] };
+      exercises.push(exercise);
+    }
+    exercise.sets.push({ weightKg: row.weight_kg, reps: row.reps });
   }
   return workouts.map((w) => ({
     id: w.id,
@@ -138,7 +159,8 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary[]
     finishedAt: w.finished_at,
     setCount: w.set_count,
     volumeKg: w.volume ?? 0,
-    exerciseNames: namesByWorkout.get(w.id) ?? [],
+    exerciseNames: (exercisesByWorkout.get(w.id) ?? []).map((e) => e.name),
+    exercises: exercisesByWorkout.get(w.id) ?? [],
   }));
 }
 

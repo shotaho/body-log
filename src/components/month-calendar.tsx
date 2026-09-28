@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -6,6 +7,9 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { monthGrid } from '@/lib/calendar';
 import { toLocalDateString } from '@/lib/date';
+
+/** 同じ日をこの時間内に2回タップしたらダブルタップとみなす */
+export const DOUBLE_TAP_MS = 400;
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -19,6 +23,8 @@ type Props = {
   today: string;
   selected: string | null;
   onSelect: (date: string) => void;
+  /** 同じ日を素早く2回タップしたとき */
+  onDoubleSelect?: (date: string) => void;
   onChangeMonth: (delta: number) => void;
 };
 
@@ -31,9 +37,23 @@ export function MonthCalendar({
   today,
   selected,
   onSelect,
+  onDoubleSelect,
   onChangeMonth,
 }: Props) {
   const theme = useTheme();
+  const lastTap = useRef<{ date: string; at: number } | null>(null);
+
+  /** at: タップした時刻(ms。イベントのタイムスタンプ) */
+  const press = (date: string, at: number) => {
+    const last = lastTap.current;
+    onSelect(date);
+    if (onDoubleSelect && last?.date === date && at - last.at <= DOUBLE_TAP_MS) {
+      lastTap.current = null;
+      onDoubleSelect(date);
+    } else {
+      lastTap.current = { date, at };
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -81,7 +101,7 @@ export function MonthCalendar({
                 accessibilityRole="button"
                 accessibilityLabel={`${month + 1}月${day.getDate()}日${labels.length ? ` ${labels.join('・')}あり` : ''}`}
                 accessibilityState={{ selected: selected === date }}
-                onPress={() => onSelect(date)}
+                onPress={(e) => press(date, e.nativeEvent.timestamp)}
                 style={[
                   styles.cell,
                   styles.day,

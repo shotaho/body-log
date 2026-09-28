@@ -5,6 +5,7 @@ import {
   formatDuration,
   nextSetStartedAt,
   remainingSeconds,
+  restAlerts,
   setTimings,
 } from '../rest-timer';
 
@@ -64,6 +65,15 @@ describe('rest timer', () => {
     expect(beepFor(1, 0)).toBe('end');
     expect(beepFor(0, 0)).toBeNull();
     expect(beepFor(90, 89)).toBeNull();
+  });
+
+  it('画面オフ用の通知は残り10秒と終了の2件(過ぎたものは除く)', () => {
+    expect(restAlerts(90_000, 0)).toEqual([
+      { kind: 'warning', at: 80_000 },
+      { kind: 'end', at: 90_000 },
+    ]);
+    expect(restAlerts(90_000, 85_000)).toEqual([{ kind: 'end', at: 90_000 }]);
+    expect(restAlerts(90_000, 95_000)).toEqual([]);
   });
 
   it('m:ss 表示', () => {

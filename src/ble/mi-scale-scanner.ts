@@ -52,75 +52,143 @@ function findScaleData(serviceData: Record<string, string> | null): string | nul
   return key ? serviceData[key] : null;
 }
 
+type Listener = {
+  onAdvertisement: (ad: ScaleAdvertisement) => void;
+  onStatus: (status: ScanStatus) => void;
+  lowLatency: boolean;
+};
+
 /**
- * 画面を開いている間だけ BLE スキャンし、Mi Body Composition Scale 2 のアドバタイズを onAdvertisement に渡す。
+ * スキャンはアプリ全体で1つにまとめる(計測画面と自動記録が同時に使っても、互いに止め合わないように)。
+ * 利用者がいる間だけスキャンし、1人でも lowLatency を求めていれば LowLatency、そうでなければ省電力の Balanced。
+ */
+const listeners = new Set<Listener>();
+let currentStatus: ScanStatus = 'starting';
+let stateSubscription: Subscription | null = null;
+let starting = false;
+let poweredOn = false;
+let scanningMode: ScanMode | null = null;
+
+function setStatus(status: ScanStatus) {
+  currentStatus = status;
+  listeners.forEach((l) => l.onStatus(status));
+}
+
+function updateScan() {
+  const ble = getManager();
+  if (listeners.size === 0 || !poweredOn) {
+    if (scanningMode !== null) {
+      ble.stopDeviceScan();
+      scanningMode = null;
+    }
+    return;
+  }
+  const mode = [...listeners].some((l) => l.lowLatency) ? ScanMode.LowLatency : ScanMode.Balanced;
+  if (scanningMode === mode) {
+    return;
+  }
+  if (scanningMode !== null) {
+    ble.stopDeviceScan();
+  }
+  scanningMode = mode;
+  setStatus('scanning');
+  const onError = () => {
+    scanningMode = null;
+    setStatus('error');
+  };
+  ble
+    .startDeviceScan(null, { allowDuplicates: true, scanMode: mode }, (error, device) => {
+      if (error) {
+        onError();
+        return;
+      }
+      const data = device && findScaleData(device.serviceData);
+      const packet = data ? parseMiScale2(base64ToBytes(data)) : null;
+      if (device && packet) {
+        const ad = { deviceId: device.id, name: device.name ?? device.localName, packet };
+        listeners.forEach((l) => l.onAdvertisement(ad));
+      }
+    })
+    .catch(onError);
+}
+
+function ensureStarted() {
+  if (stateSubscription || starting) {
+    return;
+  }
+  starting = true;
+  setStatus('starting');
+  requestPermissions().then((granted) => {
+    starting = false;
+    if (listeners.size === 0) {
+      return;
+    }
+    if (!granted) {
+      setStatus('permission-denied');
+      return;
+    }
+    stateSubscription = getManager().onStateChange((state) => {
+      poweredOn = state === State.PoweredOn;
+      updateScan();
+      if (state === State.PoweredOff) {
+        setStatus('bluetooth-off');
+      } else if (state === State.Unsupported) {
+        setStatus('unsupported');
+      } else if (state === State.Unauthorized) {
+        setStatus('permission-denied');
+      }
+    }, true);
+  });
+}
+
+function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  listener.onStatus(currentStatus);
+  ensureStarted();
+  updateScan();
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      // 次に使うときに権限・Bluetooth の状態を確認し直す
+      stateSubscription?.remove();
+      stateSubscription = null;
+      poweredOn = false;
+    }
+    updateScan();
+  };
+}
+
+export type ScanOptions = {
+  /** false の間はスキャンしない(既定 true) */
+  enabled?: boolean;
+  /** 素早く受信する(電池を多く使う)。計測画面向け。既定 true */
+  lowLatency?: boolean;
+};
+
+/**
+ * 使っている間だけ BLE スキャンし、Mi Body Composition Scale 2 のアドバタイズを onAdvertisement に渡す。
  * 接続はせず、アドバタイズ(ブロードキャスト)を受け取るだけ。
  */
-export function useMiScaleScan(onAdvertisement: (ad: ScaleAdvertisement) => void): ScanStatus {
-  const [status, setStatus] = useState<ScanStatus>('starting');
+export function useMiScaleScan(
+  onAdvertisement: (ad: ScaleAdvertisement) => void,
+  { enabled = true, lowLatency = true }: ScanOptions = {}
+): ScanStatus {
+  const [status, setStatusState] = useState<ScanStatus>('starting');
   const callback = useRef(onAdvertisement);
   useEffect(() => {
     callback.current = onAdvertisement;
   });
 
   useEffect(() => {
-    const ble = getManager();
-    let cancelled = false;
-    let stateSubscription: Subscription | undefined;
-
-    const startScan = () => {
-      setStatus('scanning');
-      ble
-        .startDeviceScan(
-          null,
-          { allowDuplicates: true, scanMode: ScanMode.LowLatency },
-          (error, device) => {
-            if (error) {
-              setStatus('error');
-              return;
-            }
-            const data = device && findScaleData(device.serviceData);
-            const packet = data ? parseMiScale2(base64ToBytes(data)) : null;
-            if (device && packet) {
-              callback.current({
-                deviceId: device.id,
-                name: device.name ?? device.localName,
-                packet,
-              });
-            }
-          }
-        )
-        .catch(() => setStatus('error'));
-    };
-
-    requestPermissions().then((granted) => {
-      if (cancelled) {
-        return;
-      }
-      if (!granted) {
-        setStatus('permission-denied');
-        return;
-      }
-      stateSubscription = ble.onStateChange((state) => {
-        if (state === State.PoweredOn) {
-          startScan();
-        } else if (state === State.PoweredOff) {
-          ble.stopDeviceScan();
-          setStatus('bluetooth-off');
-        } else if (state === State.Unsupported) {
-          setStatus('unsupported');
-        } else if (state === State.Unauthorized) {
-          setStatus('permission-denied');
-        }
-      }, true);
+    if (!enabled) {
+      return;
+    }
+    return subscribe({
+      onAdvertisement: (ad) => callback.current(ad),
+      onStatus: setStatusState,
+      lowLatency,
     });
-
-    return () => {
-      cancelled = true;
-      stateSubscription?.remove();
-      ble.stopDeviceScan();
-    };
-  }, []);
+  }, [enabled, lowLatency]);
 
   return status;
 }

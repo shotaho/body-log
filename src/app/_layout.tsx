@@ -1,8 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
-import { useColorScheme } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
+import { AutoScaleRecorder } from '@/components/auto-scale-recorder';
 import { RestTimerProvider } from '@/components/rest-timer-provider';
 import { DATABASE_NAME } from '@/db';
 import { migrateDbIfNeeded } from '@/db/migrations';
@@ -26,7 +27,16 @@ function ThemedNavigation() {
   const colorScheme = useColorScheme();
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AppTabs />
+      <View style={styles.root}>
+        <AppTabs />
+        <AutoScaleRecorder />
+      </View>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});

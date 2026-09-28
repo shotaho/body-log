@@ -25,9 +25,16 @@ import {
   type Backup,
 } from '@/db/backup';
 import { getProfile, saveProfile, type Profile } from '@/db/profile';
+import { getSetting, setSetting } from '@/db/settings';
 import { getRegisteredScale, unregisterScale, type ScaleDevice } from '@/db/scale-devices';
 import { fromLocalDateString, toLocalDateString } from '@/lib/date';
 import { formatDuration, REST_SECONDS_OPTIONS } from '@/lib/rest-timer';
+import {
+  AUTO_RECORD_MIN_KG_OPTIONS,
+  AUTO_RECORD_SETTING_KEY,
+  DEFAULT_AUTO_RECORD_MIN_KG,
+  parseAutoRecordMinKg,
+} from '@/lib/scale/auto-record';
 import { format1, parse1 } from '@/lib/decimal';
 import type { Sex } from '@/lib/scale/body-composition';
 import { useThemePreference, type ThemePreference } from '@/theme/theme-preference';
@@ -49,6 +56,11 @@ const REST_OPTIONS = REST_SECONDS_OPTIONS.map((seconds) => ({
   label: formatDuration(seconds),
 }));
 
+const AUTO_RECORD_OPTIONS = AUTO_RECORD_MIN_KG_OPTIONS.map((kg) => ({
+  value: String(kg),
+  label: kg === 0 ? 'しない' : `${kg}kg以上`,
+}));
+
 const HEIGHT_RANGE = { min: 100, max: 250 };
 const DEFAULT_BIRTH_DATE = '1990-01-01';
 
@@ -61,6 +73,7 @@ export default function SettingsScreen() {
   const [heightError, setHeightError] = useState<string>();
   const [scale, setScale] = useState<ScaleDevice | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autoRecordMinKg, setAutoRecordMinKg] = useState<number | null>(DEFAULT_AUTO_RECORD_MIN_KG);
 
   const reload = useCallback(() => {
     getProfile(db).then((p) => {
@@ -68,7 +81,15 @@ export default function SettingsScreen() {
       setHeight(p.heightCm != null ? format1(p.heightCm) : '');
     });
     getRegisteredScale(db).then(setScale);
+    getSetting(db, AUTO_RECORD_SETTING_KEY).then((v) =>
+      setAutoRecordMinKg(parseAutoRecordMinKg(v))
+    );
   }, [db]);
+
+  const changeAutoRecord = (value: string) => {
+    setAutoRecordMinKg(parseAutoRecordMinKg(value));
+    setSetting(db, AUTO_RECORD_SETTING_KEY, value);
+  };
 
   useFocusEffect(reload);
 
@@ -184,7 +205,7 @@ export default function SettingsScreen() {
 
       <Card title="レストタイマー">
         <ThemedText type="small" themeColor="textSecondary">
-          セットを記録すると自動で始まり、残り10秒と0秒で音が鳴ります(アプリを表示している間のみ)。
+          セットを記録すると自動で始まり、残り10秒と0秒で音が鳴ります。画面を消していても通知で鳴ります(通知の許可が必要です)。
         </ThemedText>
         <Chips
           options={REST_OPTIONS}
@@ -236,6 +257,17 @@ export default function SettingsScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               {scale.macAddress}
             </ThemedText>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              自動記録
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              アプリを開いている間に体重計に乗ると、計測画面を開かなくても自動で記録します。設定より軽い体重(家族の子どもや荷物など)は記録しません。
+            </ThemedText>
+            <Chips
+              options={AUTO_RECORD_OPTIONS}
+              value={String(autoRecordMinKg ?? 0)}
+              onChange={changeAutoRecord}
+            />
             <Button title="登録を解除" variant="danger" onPress={confirmUnregister} />
           </>
         ) : (

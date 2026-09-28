@@ -21,6 +21,7 @@ import {
   getPreviousSession,
   getWorkout,
   listExercises,
+  listRecentExerciseIds,
   listSets,
   listSetsBefore,
   updateSet,
@@ -39,6 +40,11 @@ type ExerciseContext = {
   priorBest: Best | null;
 };
 
+/** 最初から出しておく「記録のある種目」の上限 */
+const LOGGED_EXERCISE_LIMIT = 50;
+
+const unique = (ids: number[]) => [...new Set(ids)];
+
 export default function WorkoutScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
@@ -51,19 +57,26 @@ export default function WorkoutScreen() {
   const [note, setNote] = useState('');
   const [sets, setSets] = useState<WorkoutSet[]>([]);
   const [exercises, setExercises] = useState<Map<number, Exercise>>(new Map());
-  /** 追加したがまだセットのない種目 */
+  /** 開いた時点の種目の並び: このワークアウトでセットを行った順 → 過去に記録のある種目(最近使った順) */
+  const [baseIds, setBaseIds] = useState<number[]>([]);
+  /** 「種目を追加」で追加した種目 */
   const [pendingIds, setPendingIds] = useState<number[]>([]);
   const [contexts, setContexts] = useState<Map<number, ExerciseContext>>(new Map());
   const [pickerVisible, setPickerVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [w, all, s] = await Promise.all([
+      const [w, all, s, recent] = await Promise.all([
         getWorkout(db, workoutId),
         listExercises(db),
         listSets(db, workoutId),
+        listRecentExerciseIds(db, LOGGED_EXERCISE_LIMIT),
       ]);
+      const available = new Set(all.map((e) => e.id));
       setExercises(new Map(all.map((e) => [e.id, e])));
+      setBaseIds(
+        unique([...s.map((set) => set.exerciseId), ...recent.filter((e) => available.has(e))])
+      );
       setSets(s);
       setNote(w?.note ?? '');
       setWorkout(w);
@@ -74,16 +87,14 @@ export default function WorkoutScreen() {
     };
   }, [db, workoutId]);
 
-  /** 画面に出す種目の順番: セットを最初に行った順 → 追加したがセットのない種目 */
-  const exerciseIds = useMemo(() => {
-    const ids: number[] = [];
-    for (const s of sets) {
-      if (!ids.includes(s.exerciseId)) {
-        ids.push(s.exerciseId);
-      }
-    }
-    return [...ids, ...pendingIds.filter((p) => !ids.includes(p))];
-  }, [sets, pendingIds]);
+  /**
+   * 画面に出す種目。記録のある種目は選ばなくても最初から出しておく。
+   * セットを記録しても並びは変えない(入力中に種目が移動しないように)。
+   */
+  const exerciseIds = useMemo(
+    () => unique([...baseIds, ...pendingIds, ...sets.map((s) => s.exerciseId)]),
+    [baseIds, pendingIds, sets]
+  );
 
   // 各種目の「前回」と、このワークアウトより前のベスト(PR 判定用)を読み込む
   useEffect(() => {
@@ -215,7 +226,11 @@ export default function WorkoutScreen() {
           <ThemedText themeColor="textSecondary">種目を追加して記録を始めましょう</ThemedText>
         )}
 
-        <Button title="種目を追加" onPress={() => setPickerVisible(true)} />
+        <Button
+          title={exerciseIds.length === 0 ? '種目を追加' : 'ほかの種目を追加'}
+          variant={exerciseIds.length === 0 ? 'primary' : 'secondary'}
+          onPress={() => setPickerVisible(true)}
+        />
 
         {sets.length > 0 && <Button title="トレーニング終了" onPress={finish} />}
 
