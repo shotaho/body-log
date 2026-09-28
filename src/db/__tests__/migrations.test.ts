@@ -53,6 +53,55 @@ describe('migrateDbIfNeeded', () => {
     expect(presets.n).toBeGreaterThan(0);
   });
 
+  it('v3: セット時刻・終了時刻の列があり、プリセットはマシン系を含め 60 種目', async () => {
+    const db = new DatabaseSync(':memory:');
+    await migrateDbIfNeeded(wrap(db));
+    const cols = (table: string) =>
+      db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((c) => (c as { name: string }).name);
+    expect(cols('workout_set')).toEqual(expect.arrayContaining(['started_at', 'completed_at']));
+    expect(cols('workout')).toContain('finished_at');
+    const n = db.prepare('SELECT COUNT(*) AS n FROM exercise WHERE is_preset = 1').get() as {
+      n: number;
+    };
+    expect(n.n).toBe(60);
+    expect(
+      db.prepare("SELECT body_part FROM exercise WHERE name = 'レッグエクステンション'").get()
+    ).toEqual({ body_part: 'legs' });
+  });
+
+  it('v2 からの更新: 同名の自作種目があればそれを残す', async () => {
+    const db = new DatabaseSync(':memory:');
+    const wrapped = wrap(db);
+    // v2 までを適用した状態を作る
+    db.exec('PRAGMA user_version = 0');
+    await migrateDbIfNeeded({
+      ...wrapped,
+      execAsync: async (source) => {
+        // v3 のマイグレーション本文だけ実行しない(v2 で止める)
+        if (source.includes('ADD COLUMN started_at')) {
+          return;
+        }
+        if (source.startsWith('PRAGMA user_version = 3')) {
+          return;
+        }
+        db.exec(source);
+      },
+    });
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 });
+    db.exec("INSERT INTO exercise (name, body_part) VALUES ('レッグエクステンション', 'other')");
+
+    await migrateDbIfNeeded(wrapped);
+    expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+    expect(
+      db
+        .prepare("SELECT body_part, is_preset FROM exercise WHERE name = 'レッグエクステンション'")
+        .all()
+    ).toEqual([{ body_part: 'other', is_preset: 0 }]);
+  });
+
   it('2回実行しても重複適用しない', async () => {
     const db = new DatabaseSync(':memory:');
     await migrateDbIfNeeded(wrap(db));

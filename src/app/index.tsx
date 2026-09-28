@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/button';
 import { Card } from '@/components/card';
 import { MonthCalendar } from '@/components/month-calendar';
 import { Screen } from '@/components/screen';
@@ -11,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { getActivityDates, getDayWorkouts, type DayWorkout } from '@/db/activity';
 import { listBodyRecordsBetween, type BodyRecord } from '@/db/body-records';
+import { useOpenWorkout } from '@/hooks/use-open-workout';
 import { addMonths } from '@/lib/calendar';
 import { formatDateJa, fromLocalDateString, startOfWeek, toLocalDateString } from '@/lib/date';
 import { format1 } from '@/lib/decimal';
@@ -48,6 +50,7 @@ export default function HomeScreen() {
   });
   const [selected, setSelected] = useState<string>(today);
   const [day, setDay] = useState<{ records: BodyRecord[]; workouts: DayWorkout[] } | null>(null);
+  const openWorkout = useOpenWorkout();
 
   useFocusEffect(
     useCallback(() => {
@@ -176,6 +179,16 @@ export default function HomeScreen() {
               </ThemedText>
             </Pressable>
           ))}
+          {/* 未来の日付には記録しない。'YYYY-MM-DD' は文字列比較で日付順になる */}
+          {selected <= today && (
+            <Button
+              title={
+                day?.workouts.length ? 'この日のトレーニングを開く' : 'この日のトレーニングを記録'
+              }
+              variant="secondary"
+              onPress={() => openWorkout(selected)}
+            />
+          )}
         </Card>
       </Screen>
     </SafeAreaView>

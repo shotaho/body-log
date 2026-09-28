@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { NumericKeypad } from '@/components/numeric-keypad';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -8,7 +9,16 @@ import type { WorkoutSet } from '@/db/workouts';
 import { useTheme } from '@/hooks/use-theme';
 import { fromLocalDateString } from '@/lib/date';
 import { format1 } from '@/lib/decimal';
+import { applyKey, stepWeight, type KeypadKey } from '@/lib/keypad';
+import { formatDuration, type SetTiming } from '@/lib/rest-timer';
 import { formatSet, parseSetForm, type SetValues } from '@/lib/workout-stats';
+
+type Field = 'weight' | 'reps';
+
+const FIELD_OPTIONS: Record<Field, { decimal: boolean; maxIntDigits: number }> = {
+  weight: { decimal: true, maxIntDigits: 4 },
+  reps: { decimal: false, maxIntDigits: 3 },
+};
 
 type Props = {
   name: string;
@@ -17,7 +27,9 @@ type Props = {
   /** 前回この種目を行ったときの記録 */
   previous: { date: string; sets: WorkoutSet[] } | null;
   prSetIds: Set<number>;
-  onAdd: (sets: SetValues[]) => void;
+  /** セットごとのセット時間・レスト時間 */
+  timings?: Map<number, SetTiming>;
+  onAdd: (sets: SetValues[], options: { copied: boolean }) => void;
   onUpdate: (id: number, values: SetValues) => void;
   onDelete: (id: number) => void;
   onOpenHistory: () => void;
@@ -33,12 +45,27 @@ const shortDate = (date: string) => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
-/** ワークアウト内の1種目分。セット一覧と入力欄(追加・編集)を持つ。 */
+function timingText(timing: SetTiming | undefined): string | null {
+  if (!timing) {
+    return null;
+  }
+  const parts = [
+    timing.restSeconds != null ? `レスト ${formatDuration(timing.restSeconds)}` : null,
+    timing.setSeconds != null ? `セット ${formatDuration(timing.setSeconds)}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * ワークアウト内の1種目分。セット一覧と入力欄(追加・編集)を持つ。
+ * 重量・回数はアプリ内テンキーで入力する(OS のキーボードは使わない)。
+ */
 export function ExerciseBlock({
   name,
   sets,
   previous,
   prSetIds,
+  timings,
   onAdd,
   onUpdate,
   onDelete,
@@ -49,8 +76,30 @@ export function ExerciseBlock({
   const [input, setInput] = useState(() => toInput(sets.at(-1) ?? previous?.sets[0]));
   const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState<string>();
-  const changeInput = (field: 'weight' | 'reps', text: string) =>
-    setInput((v) => ({ ...v, [field]: text }));
+  const [activeField, setActiveField] = useState<Field | null>(null);
+  /** 欄を選んだ直後の最初のキーは、今の値を置き換える */
+  const [replaceNext, setReplaceNext] = useState(false);
+
+  const focus = (field: Field) => {
+    setActiveField(field);
+    setReplaceNext(true);
+  };
+
+  const pressKey = (key: KeypadKey) => {
+    if (!activeField) {
+      return;
+    }
+    setInput((v) => {
+      const base = replaceNext && key !== 'back' ? '' : v[activeField];
+      return { ...v, [activeField]: applyKey(base, key, FIELD_OPTIONS[activeField]) };
+    });
+    setReplaceNext(false);
+  };
+
+  const step = (delta: number) => {
+    setInput((v) => ({ ...v, weight: stepWeight(v.weight, delta) }));
+    setReplaceNext(false);
+  };
 
   const submit = () => {
     const result = parseSetForm(input.weight, input.reps);
@@ -65,7 +114,8 @@ export function ExerciseBlock({
       stopEditing();
     } else {
       // 次のセットも同じ値から入力できるよう、入力欄はそのまま残す
-      onAdd([values]);
+      onAdd([values], { copied: false });
+      setReplaceNext(true);
     }
   };
 
@@ -73,6 +123,7 @@ export function ExerciseBlock({
     setEditingId(s.id);
     setInput(toInput(s));
     setError(undefined);
+    focus('weight');
   };
 
   const stopEditing = () => {
@@ -101,7 +152,7 @@ export function ExerciseBlock({
           {sets.length === 0 && (
             <Pressable
               accessibilityRole="button"
-              onPress={() => onAdd(previous.sets)}
+              onPress={() => onAdd(previous.sets, { copied: true })}
               style={[styles.smallButton, { borderColor: theme.primary }]}>
               <ThemedText type="small" style={{ color: theme.primary }}>
                 前回と同じ
@@ -111,46 +162,57 @@ export function ExerciseBlock({
         </View>
       )}
 
-      {sets.map((s, i) => (
-        <Pressable
-          key={s.id}
-          accessibilityRole="button"
-          accessibilityHint="タップして編集"
-          onPress={() => startEditing(s)}
-          style={[
-            styles.setRow,
-            editingId === s.id && { backgroundColor: theme.backgroundSelected },
-          ]}>
-          <ThemedText themeColor="textSecondary" style={styles.setNumber}>
-            {i + 1}
-          </ThemedText>
-          <ThemedText style={styles.flex}>{formatSet(s, format1)}</ThemedText>
-          {prSetIds.has(s.id) && (
-            <View style={[styles.badge, { backgroundColor: theme.primary }]}>
-              <ThemedText type="smallBold" style={[styles.badgeText, { color: theme.onPrimary }]}>
-                PR
-              </ThemedText>
+      {sets.map((s, i) => {
+        const timing = timingText(timings?.get(s.id));
+        return (
+          <Pressable
+            key={s.id}
+            accessibilityRole="button"
+            accessibilityHint="タップして編集"
+            onPress={() => startEditing(s)}
+            style={[
+              styles.setRow,
+              editingId === s.id && { backgroundColor: theme.backgroundSelected },
+            ]}>
+            <ThemedText themeColor="textSecondary" style={styles.setNumber}>
+              {i + 1}
+            </ThemedText>
+            <View style={styles.flex}>
+              <ThemedText>{formatSet(s, format1)}</ThemedText>
+              {timing && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {timing}
+                </ThemedText>
+              )}
             </View>
-          )}
-        </Pressable>
-      ))}
+            {prSetIds.has(s.id) && (
+              <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+                <ThemedText type="smallBold" style={[styles.badgeText, { color: theme.onPrimary }]}>
+                  PR
+                </ThemedText>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
 
       <View style={styles.inputRow}>
-        <SetInput
+        <InputField
+          label="重量"
           value={input.weight}
-          onChangeText={(text) => changeInput('weight', text)}
           placeholder="自重"
           unit="kg"
-          label="重量"
+          active={activeField === 'weight'}
+          onPress={() => focus('weight')}
         />
         <ThemedText themeColor="textSecondary">×</ThemedText>
-        <SetInput
+        <InputField
+          label="回数"
           value={input.reps}
-          onChangeText={(text) => changeInput('reps', text)}
           placeholder="10"
           unit="回"
-          label="回数"
-          integer
+          active={activeField === 'reps'}
+          onPress={() => focus('reps')}
         />
         <Pressable
           accessibilityRole="button"
@@ -161,6 +223,15 @@ export function ExerciseBlock({
           </ThemedText>
         </Pressable>
       </View>
+
+      {activeField && (
+        <NumericKeypad
+          decimal={FIELD_OPTIONS[activeField].decimal}
+          onKey={pressKey}
+          onStep={activeField === 'weight' ? step : undefined}
+          onClose={() => setActiveField(null)}
+        />
+      )}
 
       {editingId != null && (
         <View style={styles.editActions}>
@@ -191,39 +262,47 @@ export function ExerciseBlock({
   );
 }
 
-function SetInput({
+/** テンキー入力用の表示欄(タップで選択)。 */
+function InputField({
+  label,
   value,
-  onChangeText,
   placeholder,
   unit,
-  label,
-  integer,
+  active,
+  onPress,
 }: {
+  label: string;
   value: string;
-  onChangeText: (text: string) => void;
   placeholder: string;
   unit: string;
-  label: string;
-  integer?: boolean;
+  active: boolean;
+  onPress: () => void;
 }) {
   const theme = useTheme();
   return (
-    <View
-      style={[styles.setInput, { borderColor: theme.border, backgroundColor: theme.background }]}>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.textSecondary}
-        keyboardType={integer ? 'number-pad' : 'decimal-pad'}
-        selectTextOnFocus
-        style={[styles.setInputText, { color: theme.text }]}
-      />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityValue={{ text: value || placeholder }}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[
+        styles.field,
+        {
+          borderColor: active ? theme.primary : theme.border,
+          borderWidth: active ? 2 : 1,
+          backgroundColor: theme.background,
+        },
+      ]}>
+      <ThemedText
+        style={[styles.fieldText, !value && { color: theme.textSecondary }]}
+        numberOfLines={1}>
+        {value || placeholder}
+      </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {unit}
       </ThemedText>
-    </View>
+    </Pressable>
   );
 }
 
@@ -281,18 +360,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
   },
-  setInput: {
+  field: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
     borderRadius: Spacing.two,
     paddingHorizontal: Spacing.two,
+    minHeight: 48,
   },
-  setInputText: {
+  fieldText: {
     flex: 1,
     fontSize: 18,
-    paddingVertical: Spacing.two,
+    fontVariant: ['tabular-nums'],
   },
   addButton: {
     borderRadius: Spacing.two,

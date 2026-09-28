@@ -5,9 +5,11 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { pickDate } from '@/components/date-time-field';
 import { ThemedText } from '@/components/themed-text';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { findOrCreateWorkout, listWorkouts, type WorkoutSummary } from '@/db/workouts';
+import { listWorkouts, type WorkoutSummary } from '@/db/workouts';
+import { useOpenWorkout } from '@/hooks/use-open-workout';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDateJa, fromLocalDateString, toLocalDateString } from '@/lib/date';
 
@@ -17,6 +19,7 @@ export default function WorkoutListScreen() {
   const db = useSQLiteContext();
   const theme = useTheme();
   const [workouts, setWorkouts] = useState<WorkoutSummary[] | null>(null);
+  const openWorkout = useOpenWorkout();
 
   useFocusEffect(
     useCallback(() => {
@@ -28,30 +31,26 @@ export default function WorkoutListScreen() {
     }, [db])
   );
 
-  /** 今日のワークアウトを開く(なければ作成)。 */
-  const openTodayWorkout = async () => {
-    const id = await findOrCreateWorkout(db, toLocalDateString(new Date()));
-    router.push({ pathname: '/workout/[id]', params: { id } });
-  };
-
   if (workouts === null) {
     return null;
   }
 
   const header = (
     <View style={styles.header}>
-      <Button title="今日のトレーニングを記録" onPress={openTodayWorkout} />
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/workout/exercises')}
-        style={({ pressed }) => pressed && styles.pressed}>
-        <Card>
-          <View style={styles.linkRow}>
-            <ThemedText style={styles.flex}>種目別の記録・グラフ</ThemedText>
-            <ThemedText themeColor="textSecondary">›</ThemedText>
-          </View>
-        </Card>
-      </Pressable>
+      <Button
+        title="今日のトレーニングを記録"
+        onPress={() => openWorkout(toLocalDateString(new Date()))}
+      />
+      <Button
+        title="日付を選んで記録"
+        variant="secondary"
+        onPress={() => pickDate(new Date(), (date) => openWorkout(toLocalDateString(date)))}
+      />
+      <Card>
+        <LinkRow label="種目別の記録・グラフ" onPress={() => router.push('/workout/exercises')} />
+        <View style={[styles.separator, { backgroundColor: theme.border }]} />
+        <LinkRow label="部位別の推移" onPress={() => router.push('/workout/body-parts')} />
+      </Card>
       {workouts.length === 0 ? (
         <ThemedText themeColor="textSecondary">まだ記録がありません</ThemedText>
       ) : (
@@ -96,6 +95,18 @@ export default function WorkoutListScreen() {
   );
 }
 
+function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}>
+      <ThemedText style={styles.flex}>{label}</ThemedText>
+      <ThemedText themeColor="textSecondary">›</ThemedText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
@@ -114,6 +125,7 @@ const styles = StyleSheet.create({
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: Spacing.one,
   },
   row: {
     paddingVertical: Spacing.three,

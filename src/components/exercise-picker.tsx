@@ -15,6 +15,7 @@ import {
   DuplicateExerciseError,
   insertExercise,
   listExercises,
+  listRecentExerciseIds,
   type Exercise,
 } from '@/db/workouts';
 import { useTheme } from '@/hooks/use-theme';
@@ -41,18 +42,18 @@ export function ExercisePicker({
   const db = useSQLiteContext();
   const theme = useTheme();
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [recentIds, setRecentIds] = useState<number[]>([]);
   const [query, setQuery] = useState('');
   const [bodyPart, setBodyPart] = useState<BodyPart>('chest');
   const [error, setError] = useState<string>();
 
   useEffect(() => {
     listExercises(db).then(setExercises);
+    listRecentExerciseIds(db, 20).then(setRecentIds);
   }, [db]);
 
   const trimmed = query.trim();
-  const filtered = exercises.filter(
-    (e) => !excludeIds.includes(e.id) && (trimmed === '' || e.name.includes(trimmed))
-  );
+  const selectable = exercises.filter((e) => !excludeIds.includes(e.id));
   const exactMatch = exercises.some((e) => e.name === trimmed);
 
   const addExercise = async () => {
@@ -80,7 +81,9 @@ export function ExercisePicker({
           </Pressable>
         </View>
         <ExerciseSectionList
-          exercises={filtered}
+          exercises={selectable}
+          recentIds={recentIds}
+          query={query}
           onPress={onSelect}
           bottomInset={0}
           header={

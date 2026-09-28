@@ -7,13 +7,15 @@ import { useTheme } from '@/hooks/use-theme';
 type Props = {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
 };
 
 export function Button({ title, onPress, variant = 'primary', disabled }: Props) {
   const theme = useTheme();
   const primary = variant === 'primary';
+  // 枠線と文字の色(primary 以外)
+  const accent = variant === 'danger' ? theme.danger : theme.primary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -22,14 +24,12 @@ export function Button({ title, onPress, variant = 'primary', disabled }: Props)
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        primary
-          ? { backgroundColor: theme.primary }
-          : { borderWidth: 1, borderColor: theme.danger },
+        primary ? { backgroundColor: theme.primary } : { borderWidth: 1, borderColor: accent },
         (pressed || disabled) && styles.dimmed,
       ]}>
       <ThemedText
         type="smallBold"
-        style={[styles.label, { color: primary ? theme.onPrimary : theme.danger }]}>
+        style={[styles.label, { color: primary ? theme.onPrimary : accent }]}>
         {title}
       </ThemedText>
     </Pressable>

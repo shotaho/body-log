@@ -5,7 +5,13 @@ import { round1 } from '@/lib/decimal';
 
 export type Exercise = { id: number; name: string; bodyPart: BodyPart; isPreset: boolean };
 
-export type Workout = { id: number; date: string; note: string | null };
+export type Workout = {
+  id: number;
+  date: string;
+  note: string | null;
+  /** 「トレーニング終了」を押した時刻。未終了なら null */
+  finishedAt: number | null;
+};
 
 export type WorkoutSet = {
   id: number;
@@ -14,6 +20,10 @@ export type WorkoutSet = {
   setOrder: number;
   weightKg: number;
   reps: number;
+  /** セット開始時刻(レストタイマー終了時刻)。不明なら null */
+  startedAt: number | null;
+  /** セット完了時刻(記録した時刻)。前回のコピーなどで不明なら null */
+  completedAt: number | null;
 };
 
 export type WorkoutSummary = Workout & {
@@ -30,6 +40,8 @@ type SetRow = {
   set_order: number;
   weight_kg: number;
   reps: number;
+  started_at: number | null;
+  completed_at: number | null;
 };
 
 const fromSetRow = (r: SetRow): WorkoutSet => ({
@@ -39,6 +51,8 @@ const fromSetRow = (r: SetRow): WorkoutSet => ({
   setOrder: r.set_order,
   weightKg: r.weight_kg,
   reps: r.reps,
+  startedAt: r.started_at,
+  completedAt: r.completed_at,
 });
 
 // ---- 種目 ----
@@ -100,10 +114,11 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary[]
     id: number;
     date: string;
     note: string | null;
+    finished_at: number | null;
     set_count: number;
     volume: number | null;
   }>(
-    `SELECT w.id, w.date, w.note, COUNT(s.id) AS set_count, SUM(s.weight_kg * s.reps) AS volume
+    `SELECT w.id, w.date, w.note, w.finished_at, COUNT(s.id) AS set_count, SUM(s.weight_kg * s.reps) AS volume
      FROM workout w LEFT JOIN workout_set s ON s.workout_id = w.id
      GROUP BY w.id ORDER BY w.date DESC, w.id DESC`
   );
@@ -120,6 +135,7 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary[]
     id: w.id,
     date: w.date,
     note: w.note,
+    finishedAt: w.finished_at,
     setCount: w.set_count,
     volumeKg: w.volume ?? 0,
     exerciseNames: namesByWorkout.get(w.id) ?? [],
@@ -127,7 +143,19 @@ export async function listWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary[]
 }
 
 export async function getWorkout(db: SQLiteDatabase, id: number): Promise<Workout | null> {
-  return db.getFirstAsync<Workout>('SELECT id, date, note FROM workout WHERE id = ?', id);
+  return db.getFirstAsync<Workout>(
+    'SELECT id, date, note, finished_at AS finishedAt FROM workout WHERE id = ?',
+    id
+  );
+}
+
+/** 「トレーニング終了」を記録する(何度押しても最初の終了時刻を残す)。 */
+export async function finishWorkout(db: SQLiteDatabase, id: number, at: number): Promise<void> {
+  await db.runAsync(
+    'UPDATE workout SET finished_at = COALESCE(finished_at, ?) WHERE id = ?',
+    at,
+    id
+  );
 }
 
 /** その日のワークアウトがあればその id、なければ作成して id を返す。 */
@@ -187,7 +215,7 @@ export async function addSets(
   db: SQLiteDatabase,
   workoutId: number,
   exerciseId: number,
-  sets: { weightKg: number; reps: number }[]
+  sets: { weightKg: number; reps: number; startedAt?: number | null; completedAt?: number | null }[]
 ): Promise<void> {
   await db.withTransactionAsync(async () => {
     const row = await db.getFirstAsync<{ max_order: number | null }>(
@@ -198,13 +226,16 @@ export async function addSets(
     for (const s of sets) {
       order += 1;
       await db.runAsync(
-        `INSERT INTO workout_set (workout_id, exercise_id, set_order, weight_kg, reps)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO workout_set
+           (workout_id, exercise_id, set_order, weight_kg, reps, started_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         workoutId,
         exerciseId,
         order,
         round1(s.weightKg),
-        s.reps
+        s.reps,
+        s.startedAt ?? null,
+        s.completedAt ?? null
       );
     }
   });
@@ -289,4 +320,28 @@ export async function getExerciseHistory(
     exerciseId
   );
   return rows.map((r) => ({ ...fromSetRow(r), date: r.date }));
+}
+
+/** 最近使った種目の id(最後に行った日が新しい順)。 */
+export async function listRecentExerciseIds(db: SQLiteDatabase, limit: number): Promise<number[]> {
+  const rows = await db.getAllAsync<{ exercise_id: number }>(
+    `SELECT s.exercise_id FROM workout_set s JOIN workout w ON w.id = s.workout_id
+     GROUP BY s.exercise_id ORDER BY MAX(w.date) DESC, MAX(s.id) DESC LIMIT ?`,
+    limit
+  );
+  return rows.map((r) => r.exercise_id);
+}
+
+export type BodyPartVolume = { date: string; bodyPart: BodyPart; volumeKg: number };
+
+/** 日付 × 部位ごとの総ボリューム(重量×回数の合計)。日付昇順。 */
+export async function listBodyPartDailyVolume(db: SQLiteDatabase): Promise<BodyPartVolume[]> {
+  const rows = await db.getAllAsync<{ date: string; body_part: BodyPart; volume: number }>(
+    `SELECT w.date, e.body_part, SUM(s.weight_kg * s.reps) AS volume
+     FROM workout_set s
+     JOIN workout w ON w.id = s.workout_id
+     JOIN exercise e ON e.id = s.exercise_id
+     GROUP BY w.date, e.body_part ORDER BY w.date`
+  );
+  return rows.map((r) => ({ date: r.date, bodyPart: r.body_part, volumeKg: r.volume }));
 }

@@ -61,6 +61,15 @@
 - 重量は空欄なら自重(0 kg)として記録する
 - 同じ日に「今日のトレーニングを記録」を押すと、その日のワークアウトを開く(なければ作成)。何も記録せずに戻った空のワークアウトは削除する
 
+### 2.3.1 記録の補助(v3 で追加。詳細は docs/TODO.md)
+- 重量・回数はアプリ内テンキーで入力(重量は ±5kg / ±2.5kg ボタンあり)
+- 当日のワークアウトでは、セット記録でレストタイマーが自動で開始(時間は設定で全体に1つ、既定 1:30)。残り10秒と0秒で音を1回ずつ鳴らす(アプリ表示中のみ)
+- セットの完了時刻と開始時刻(= レストタイマー終了時刻)を記録し、セット時間・レスト時間を表示
+- 日付を選んで(過去日も)記録できる。ホームのカレンダーからも開ける
+- 「トレーニング終了」で結果画面を表示(全身イラストで鍛えた部位を濃淡表示、部位別ボリューム)
+- 部位別の総ボリュームの推移グラフ
+- プリセット種目 60 種目(マシン系中心)。種目の選択・一覧は部位タブ・最近使った種目・検索
+
 ### 2.4 その他
 - ホーム: 最新体重、前回比、今週のトレーニング回数
 - カレンダー(ホーム): トレーニング日・計測日をマーク。日付をタップするとその日の記録を表示し、各記録を開ける
@@ -94,8 +103,9 @@ scale_device   (id, mac_address, model, name, created_at)
 body_record    (id, measured_at, weight_kg, body_fat_pct, muscle_kg, water_pct,
                 bone_kg, visceral_fat, bmr_kcal, bmi, impedance, source, note)
 exercise       (id, name, body_part, is_preset, archived)
-workout        (id, date, note, created_at)
-workout_set    (id, workout_id, exercise_id, set_order, weight_kg, reps)
+workout        (id, date, note, created_at, finished_at)
+workout_set    (id, workout_id, exercise_id, set_order, weight_kg, reps,
+                started_at, completed_at)        -- セット開始(レスト終了)・完了時刻
 ```
 
 - 日時(`measured_at`, `created_at`)は UNIX エポックミリ秒(INTEGER)、`workout.date` はローカル日付 `YYYY-MM-DD`
@@ -111,6 +121,7 @@ workout_set    (id, workout_id, exercise_id, set_order, weight_kg, reps)
 3. ✅ 筋トレ記録(種目マスタ・セット入力・前回コピー、種目別グラフ・PR)
 4. ✅ BLE 受信 → 体組成算出(XMTZC05HM)
 5. ✅ エクスポート/インポート、ホーム・カレンダー
+6. ✅ 実機フィードバック対応(docs/TODO.md の 1〜9)
 
 ## 7. 未決事項
 1. ~~体重計の機種~~ → XMTZC05HM で確定

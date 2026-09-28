@@ -45,7 +45,15 @@
           "bluetoothAlwaysPermission": "体重計から体重を受信するために Bluetooth を使用します"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, ScrollView, StyleSheet } from 'react-native';
 
 import { Button } from '@/components/button';
+import { RestTimerBar } from '@/components/rest-timer-bar';
+import { useRestTimer } from '@/components/rest-timer-provider';
 import { DateTimeField } from '@/components/date-time-field';
 import { ExerciseBlock } from '@/components/exercise-block';
 import { ExercisePicker } from '@/components/exercise-picker';
@@ -15,6 +17,7 @@ import {
   deleteSet,
   deleteWorkout,
   deleteWorkoutIfEmpty,
+  finishWorkout,
   getPreviousSession,
   getWorkout,
   listExercises,
@@ -28,6 +31,7 @@ import {
 } from '@/db/workouts';
 import { useTheme } from '@/hooks/use-theme';
 import { fromLocalDateString, toLocalDateString } from '@/lib/date';
+import { setTimings } from '@/lib/rest-timer';
 import { bestOf, personalRecordSetIds, type Best } from '@/lib/workout-stats';
 
 type ExerciseContext = {
@@ -40,6 +44,7 @@ export default function WorkoutScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const workoutId = Number(id);
+  const restTimer = useRestTimer();
 
   // undefined: 読み込み中 / null: 見つからない
   const [workout, setWorkout] = useState<Workout | null>();
@@ -104,6 +109,8 @@ export default function WorkoutScreen() {
     setSets(await listSets(db, workoutId));
   }, [db, workoutId]);
 
+  const timings = useMemo(() => setTimings(sets), [sets]);
+
   if (workout === undefined) {
     return null;
   }
@@ -126,6 +133,15 @@ export default function WorkoutScreen() {
     updateWorkout(db, workout.id, { date: workout.date, note: text.trim() || null });
   };
 
+  /** 当日のワークアウトだけ、レストタイマーとセット・レスト時間の記録を行う(過去日の後入力では行わない) */
+  const isToday = workout.date === toLocalDateString(new Date());
+
+  const finish = async () => {
+    await finishWorkout(db, workout.id, Date.now());
+    restTimer.dismiss();
+    router.push({ pathname: '/workout/summary/[id]', params: { id: workout.id } });
+  };
+
   const confirmDelete = () =>
     Alert.alert('このワークアウトを削除しますか?', '記録したセットもすべて削除されます。', [
       { text: 'キャンセル', style: 'cancel' },
@@ -141,6 +157,7 @@ export default function WorkoutScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <RestTimerBar />
       <ScrollView
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
@@ -165,8 +182,18 @@ export default function WorkoutScreen() {
               sets={exerciseSets}
               previous={context.previous}
               prSetIds={personalRecordSetIds(context.priorBest, exerciseSets)}
-              onAdd={async (values) => {
-                await addSets(db, workout.id, exerciseId, values);
+              timings={timings}
+              onAdd={async (values, { copied }) => {
+                if (copied || !isToday) {
+                  // 前回のコピーや過去日の入力は、実際の時刻がわからないので記録しない
+                  await addSets(db, workout.id, exerciseId, values);
+                } else {
+                  const now = Date.now();
+                  const startedAt = restTimer.onSetCompleted(now);
+                  await addSets(db, workout.id, exerciseId, [
+                    { ...values[0], startedAt, completedAt: now },
+                  ]);
+                }
                 await reloadSets();
               }}
               onUpdate={async (setId, values) => {
@@ -189,6 +216,8 @@ export default function WorkoutScreen() {
         )}
 
         <Button title="種目を追加" onPress={() => setPickerVisible(true)} />
+
+        {sets.length > 0 && <Button title="トレーニング終了" onPress={finish} />}
 
         <TextField label="メモ(任意)" value={note} onChangeText={changeNote} multiline />
 

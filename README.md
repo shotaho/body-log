@@ -21,6 +21,10 @@ npx expo run:android   # Development Build をビルドして実機/エミュレ
 - ネイティブ部分(fingerprint)が変わっていなければ OTA 更新を `preview` チャンネルに配信する。アプリは起動時に更新を取得し、再起動を促す
 - ネイティブ部分が変わっていれば APK(`eas.json` の `preview` プロファイル)を作り直す。expo.dev のビルド画面から端末にインストールする
 
+## 音声ファイル
+
+レストタイマーの音(`assets/sounds/*.wav`)は `node scripts/generate-beeps.mjs` で生成している。
+
 ## チェック
 
 ```bash

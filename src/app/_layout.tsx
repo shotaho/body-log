@@ -3,6 +3,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { useColorScheme } from 'react-native';
 
 import AppTabs from '@/components/app-tabs';
+import { RestTimerProvider } from '@/components/rest-timer-provider';
 import { DATABASE_NAME } from '@/db';
 import { migrateDbIfNeeded } from '@/db/migrations';
 import { useAppUpdate } from '@/hooks/use-app-update';
@@ -13,7 +14,9 @@ export default function RootLayout() {
   return (
     <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
       <ThemePreferenceProvider>
-        <ThemedNavigation />
+        <RestTimerProvider>
+          <ThemedNavigation />
+        </RestTimerProvider>
       </ThemePreferenceProvider>
     </SQLiteProvider>
   );

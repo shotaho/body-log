@@ -9,7 +9,9 @@ import { Alert } from 'react-native';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { Chips } from '@/components/chips';
 import { DateTimeField } from '@/components/date-time-field';
+import { useRestTimer } from '@/components/rest-timer-provider';
 import { Screen } from '@/components/screen';
 import { SegmentedControl } from '@/components/segmented-control';
 import { TextField } from '@/components/text-field';
@@ -25,6 +27,7 @@ import {
 import { getProfile, saveProfile, type Profile } from '@/db/profile';
 import { getRegisteredScale, unregisterScale, type ScaleDevice } from '@/db/scale-devices';
 import { fromLocalDateString, toLocalDateString } from '@/lib/date';
+import { formatDuration, REST_SECONDS_OPTIONS } from '@/lib/rest-timer';
 import { format1, parse1 } from '@/lib/decimal';
 import type { Sex } from '@/lib/scale/body-composition';
 import { useThemePreference, type ThemePreference } from '@/theme/theme-preference';
@@ -41,12 +44,18 @@ const SEX_OPTIONS: { value: Sex | 'unset'; label: string }[] = [
   { value: 'female', label: '女性' },
 ];
 
+const REST_OPTIONS = REST_SECONDS_OPTIONS.map((seconds) => ({
+  value: String(seconds),
+  label: formatDuration(seconds),
+}));
+
 const HEIGHT_RANGE = { min: 100, max: 250 };
 const DEFAULT_BIRTH_DATE = '1990-01-01';
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
   const { preference, setPreference } = useThemePreference();
+  const { restSeconds, setRestSeconds } = useRestTimer();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [height, setHeight] = useState('');
   const [heightError, setHeightError] = useState<string>();
@@ -171,6 +180,17 @@ export default function SettingsScreen() {
     <Screen>
       <Card title="テーマ">
         <SegmentedControl options={THEME_OPTIONS} value={preference} onChange={setPreference} />
+      </Card>
+
+      <Card title="レストタイマー">
+        <ThemedText type="small" themeColor="textSecondary">
+          セットを記録すると自動で始まり、残り10秒と0秒で音が鳴ります(アプリを表示している間のみ)。
+        </ThemedText>
+        <Chips
+          options={REST_OPTIONS}
+          value={String(restSeconds)}
+          onChange={(v) => setRestSeconds(Number(v))}
+        />
       </Card>
 
       {profile && (

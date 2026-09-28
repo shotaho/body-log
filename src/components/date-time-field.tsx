@@ -87,3 +87,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
 });
+
+/**
+ * 日付選択ダイアログだけを開く(Android)。選ばれたら onPick を呼ぶ。未来の日付は選べない。
+ * Android 以外ではダイアログを出せないので、今日の日付をそのまま渡す。
+ */
+export function pickDate(initial: Date, onPick: (date: Date) => void) {
+  if (Platform.OS !== 'android') {
+    onPick(initial);
+    return;
+  }
+  DateTimePickerAndroid.open({
+    value: initial,
+    mode: 'date',
+    maximumDate: new Date(),
+    onValueChange: (_, date) => onPick(date),
+  });
+}

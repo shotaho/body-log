@@ -10,6 +10,8 @@ export default function WorkoutLayout() {
       <Stack.Screen name="[id]" options={{ title: 'ワークアウト' }} />
       <Stack.Screen name="exercises" options={{ title: '種目' }} />
       <Stack.Screen name="exercise/[id]" options={{ title: '種目' }} />
+      <Stack.Screen name="summary/[id]" options={{ title: 'トレーニング結果' }} />
+      <Stack.Screen name="body-parts" options={{ title: '部位別の推移' }} />
     </Stack>
   );
 }

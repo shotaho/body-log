@@ -19,6 +19,12 @@ export const Colors = {
     // グラフ: 主系列(7日平均)は検証済みの categorical slot 1、日ごとの値は控えめなグレー
     chartSeries: '#2a78d6',
     chartMuted: '#A0A3AB',
+    // 全身イラスト: 未実施の部位と、ボリュームの少→多(検証済みの順序付き単色ランプ)
+    bodyIdle: '#E0E1E6',
+    body1: '#6da7ec',
+    body2: '#3987e5',
+    body3: '#1c5cab',
+    body4: '#0d366b',
   },
   dark: {
     text: '#ffffff',
@@ -32,6 +38,11 @@ export const Colors = {
     danger: '#FF6369',
     chartSeries: '#3987e5',
     chartMuted: '#62656C',
+    bodyIdle: '#2E3135',
+    body1: '#1c5cab',
+    body2: '#2a78d6',
+    body3: '#6da7ec',
+    body4: '#b7d3f6',
   },
 } as const;
 

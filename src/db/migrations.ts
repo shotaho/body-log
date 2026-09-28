@@ -41,6 +41,55 @@ const PRESET_EXERCISES: [name: string, bodyPart: BodyPart][] = [
   ['クランチ', 'abs'],
 ];
 
+/** v3 で追加したプリセット(マシン中心)。同名の種目がすでにあれば追加しない。 */
+const ADDED_PRESETS_V3: [name: string, bodyPart: BodyPart][] = [
+  ['チェストプレス(マシン)', 'chest'],
+  ['インクラインチェストプレス(マシン)', 'chest'],
+  ['ペックフライ(マシン)', 'chest'],
+  ['スミスマシンベンチプレス', 'chest'],
+  ['ケーブルクロスオーバー', 'chest'],
+  ['ダンベルベンチプレス', 'chest'],
+  ['ディップス', 'chest'],
+  ['腕立て伏せ', 'chest'],
+  ['シーテッドロウ(マシン)', 'back'],
+  ['ケーブルロウ', 'back'],
+  ['ナローグリップラットプルダウン', 'back'],
+  ['アシスト懸垂(マシン)', 'back'],
+  ['プルオーバー(マシン)', 'back'],
+  ['ワンハンドダンベルロウ', 'back'],
+  ['バックエクステンション', 'back'],
+  ['レッグエクステンション', 'legs'],
+  ['シーテッドレッグカール', 'legs'],
+  ['ライイングレッグカール', 'legs'],
+  ['アダクション(マシン)', 'legs'],
+  ['アブダクション(マシン)', 'legs'],
+  ['ハックスクワット(マシン)', 'legs'],
+  ['スミスマシンスクワット', 'legs'],
+  ['カーフレイズ(マシン)', 'legs'],
+  ['ブルガリアンスクワット', 'legs'],
+  ['ランジ', 'legs'],
+  ['ヒップスラスト', 'legs'],
+  ['ショルダープレス(マシン)', 'shoulders'],
+  ['リアデルトフライ(マシン)', 'shoulders'],
+  ['ケーブルサイドレイズ', 'shoulders'],
+  ['フロントレイズ', 'shoulders'],
+  ['アップライトロウ', 'shoulders'],
+  ['フェイスプル', 'shoulders'],
+  ['プリーチャーカール(マシン)', 'arms'],
+  ['ダンベルカール', 'arms'],
+  ['ハンマーカール', 'arms'],
+  ['ケーブルカール', 'arms'],
+  ['ケーブルプッシュダウン', 'arms'],
+  ['ディップス(マシン)', 'arms'],
+  ['フレンチプレス', 'arms'],
+  ['アブドミナルクランチ(マシン)', 'abs'],
+  ['ロータリートルソー(マシン)', 'abs'],
+  ['ケーブルクランチ', 'abs'],
+  ['レッグレイズ', 'abs'],
+  ['アブローラー', 'abs'],
+  ['プランク', 'abs'],
+];
+
 const sqlString = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 const MIGRATIONS: string[] = [
@@ -117,6 +166,15 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE body_record ADD COLUMN scale_key TEXT;
   CREATE UNIQUE INDEX idx_body_record_scale_key ON body_record (scale_key) WHERE scale_key IS NOT NULL;
+  `,
+  // v3: セットの開始・完了時刻(セット時間・レスト時間用)、ワークアウトの終了時刻、プリセット種目の追加
+  `
+  ALTER TABLE workout_set ADD COLUMN started_at INTEGER;
+  ALTER TABLE workout_set ADD COLUMN completed_at INTEGER;
+  ALTER TABLE workout ADD COLUMN finished_at INTEGER;
+
+  INSERT OR IGNORE INTO exercise (name, body_part, is_preset) VALUES
+  ${ADDED_PRESETS_V3.map(([name, part]) => `(${sqlString(name)}, ${sqlString(part)}, 1)`).join(',\n  ')};
   `,
 ];
 
