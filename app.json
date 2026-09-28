@@ -51,7 +51,7 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "owner": "shotaho",
+    "owner": "shotahos-team",
     "runtimeVersion": {
       "policy": "fingerprint"
     },
