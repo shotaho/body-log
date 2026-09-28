@@ -50,6 +50,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "owner": "shotaho",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7d01b74b-cd17-4516-882b-32f376f03a20"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7d01b74b-cd17-4516-882b-32f376f03a20"
+      }
     }
   }
 }

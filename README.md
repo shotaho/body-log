@@ -14,6 +14,13 @@ npx expo run:android   # Development Build をビルドして実機/エミュレ
 `expo-sqlite` や今後追加する BLE などネイティブモジュールを使うため、Expo Go ではなく Development Build で動かす。
 ローカルに Android Studio がない場合は `npx eas-cli@latest build --profile development --platform android` でクラウドビルドできる。
 
+## 配布(EAS Workflows)
+
+`claude/workout-weight-log-app-ceepeb` ブランチに push すると、Expo のサーバーで `.eas/workflows/preview.yml` が実行される(GitHub 連携済みのため、トークン不要)。
+
+- ネイティブ部分(fingerprint)が変わっていなければ OTA 更新を `preview` チャンネルに配信する。アプリは起動時に更新を取得し、再起動を促す
+- ネイティブ部分が変わっていれば APK(`eas.json` の `preview` プロファイル)を作り直す。expo.dev のビルド画面から端末にインストールする
+
 ## チェック
 
 ```bash

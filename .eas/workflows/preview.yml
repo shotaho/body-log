@@ -1,0 +1,40 @@
+# push のたびに Expo のサーバー上で実行される(EAS Workflows)。
+# ネイティブ部分(fingerprint)が変わっていなければ OTA 更新だけを配信し、
+# 変わっていれば APK を作り直す。
+name: Preview
+
+on:
+  push:
+    branches: ['claude/workout-weight-log-app-ceepeb']
+
+jobs:
+  fingerprint:
+    name: Fingerprint
+    type: fingerprint
+
+  get_android_build:
+    name: 同じネイティブ構成の既存ビルドを探す
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+      profile: preview
+      platform: android
+
+  build_android:
+    name: APK をビルド
+    needs: [get_android_build]
+    if: ${{ !needs.get_android_build.outputs.build_id }}
+    type: build
+    params:
+      platform: android
+      profile: preview
+
+  update_android:
+    name: OTA 更新を配信
+    needs: [get_android_build]
+    if: ${{ needs.get_android_build.outputs.build_id }}
+    type: update
+    params:
+      channel: preview
+      platform: android
