@@ -1,14 +1,15 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, ScrollView, StyleSheet } from 'react-native';
+import { Alert, KeyboardAvoidingView, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { RestTimerBar } from '@/components/rest-timer-bar';
 import { useRestTimer } from '@/components/rest-timer-provider';
 import { DateTimeField } from '@/components/date-time-field';
-import { ExerciseBlock } from '@/components/exercise-block';
+import { ExerciseCard } from '@/components/exercise-card';
 import { ExercisePicker } from '@/components/exercise-picker';
+import { Card } from '@/components/card';
 import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -33,7 +34,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { fromLocalDateString, toLocalDateString } from '@/lib/date';
 import { setTimings } from '@/lib/rest-timer';
-import { bestOf, personalRecordSetIds, type Best } from '@/lib/workout-stats';
+import { bestOf, personalRecordSetIds, totalVolume, type Best } from '@/lib/workout-stats';
 
 type ExerciseContext = {
   previous: { date: string; sets: WorkoutSet[] } | null;
@@ -44,6 +45,17 @@ type ExerciseContext = {
 const LOGGED_EXERCISE_LIMIT = 50;
 
 const unique = (ids: number[]) => [...new Set(ids)];
+
+const formatVolume = (kg: number) => Math.round(kg).toLocaleString('ja-JP');
+
+/** 記録した時刻からわかるトレーニング時間(分)。わからなければ null */
+function workoutMinutes(sets: WorkoutSet[]): number | null {
+  const times = sets.flatMap((s) => [s.startedAt, s.completedAt]).filter((t) => t != null);
+  if (times.length < 2) {
+    return null;
+  }
+  return Math.max(1, Math.round((Math.max(...times) - Math.min(...times)) / 60_000));
+}
 
 export default function WorkoutScreen() {
   const db = useSQLiteContext();
@@ -57,10 +69,14 @@ export default function WorkoutScreen() {
   const [note, setNote] = useState('');
   const [sets, setSets] = useState<WorkoutSet[]>([]);
   const [exercises, setExercises] = useState<Map<number, Exercise>>(new Map());
-  /** 開いた時点の種目の並び: このワークアウトでセットを行った順 → 過去に記録のある種目(最近使った順) */
-  const [baseIds, setBaseIds] = useState<number[]>([]);
+  /** 開いた時点でこのワークアウトにセットがあった種目(セットを行った順) */
+  const [workoutIds, setWorkoutIds] = useState<number[]>([]);
+  /** 過去に記録のある種目(最近使った順)。選ばなくても最初から出しておく */
+  const [loggedIds, setLoggedIds] = useState<number[]>([]);
   /** 「種目を追加」で追加した種目 */
   const [pendingIds, setPendingIds] = useState<number[]>([]);
+  /** 開いている種目カード */
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [contexts, setContexts] = useState<Map<number, ExerciseContext>>(new Map());
   const [pickerVisible, setPickerVisible] = useState(false);
 
@@ -73,10 +89,11 @@ export default function WorkoutScreen() {
         listRecentExerciseIds(db, LOGGED_EXERCISE_LIMIT),
       ]);
       const available = new Set(all.map((e) => e.id));
+      const inWorkout = unique(s.map((set) => set.exerciseId));
       setExercises(new Map(all.map((e) => [e.id, e])));
-      setBaseIds(
-        unique([...s.map((set) => set.exerciseId), ...recent.filter((e) => available.has(e))])
-      );
+      setWorkoutIds(inWorkout);
+      setLoggedIds(recent.filter((e) => available.has(e) && !inWorkout.includes(e)));
+      setExpanded(new Set(inWorkout));
       setSets(s);
       setNote(w?.note ?? '');
       setWorkout(w);
@@ -88,13 +105,12 @@ export default function WorkoutScreen() {
   }, [db, workoutId]);
 
   /**
-   * 画面に出す種目。記録のある種目は選ばなくても最初から出しておく。
+   * 画面に出す種目: このワークアウトの種目 → 追加した種目 → 記録のある種目。
    * セットを記録しても並びは変えない(入力中に種目が移動しないように)。
    */
-  const exerciseIds = useMemo(
-    () => unique([...baseIds, ...pendingIds, ...sets.map((s) => s.exerciseId)]),
-    [baseIds, pendingIds, sets]
-  );
+  const topIds = useMemo(() => unique([...workoutIds, ...pendingIds]), [workoutIds, pendingIds]);
+  const restIds = useMemo(() => loggedIds.filter((e) => !topIds.includes(e)), [loggedIds, topIds]);
+  const exerciseIds = useMemo(() => [...topIds, ...restIds], [topIds, restIds]);
 
   // 各種目の「前回」と、このワークアウトより前のベスト(PR 判定用)を読み込む
   useEffect(() => {
@@ -147,6 +163,15 @@ export default function WorkoutScreen() {
   /** 当日のワークアウトだけ、レストタイマーとセット・レスト時間の記録を行う(過去日の後入力では行わない) */
   const isToday = workout.date === toLocalDateString(new Date());
 
+  const toggle = (exerciseId: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(exerciseId)) {
+        next.add(exerciseId);
+      }
+      return next;
+    });
+
   const finish = async () => {
     await finishWorkout(db, workout.id, Date.now());
     restTimer.dismiss();
@@ -166,6 +191,51 @@ export default function WorkoutScreen() {
       },
     ]);
 
+  const renderCard = (exerciseId: number) => {
+    const exerciseSets = sets.filter((s) => s.exerciseId === exerciseId);
+    const context = contexts.get(exerciseId);
+    // 「前回」の読み込みを待ってから出す(予定のセットの初期値に使うため)
+    if (!context) {
+      return null;
+    }
+    return (
+      <ExerciseCard
+        key={exerciseId}
+        name={exercises.get(exerciseId)?.name ?? '(削除された種目)'}
+        sets={exerciseSets}
+        previous={context.previous}
+        prSetIds={personalRecordSetIds(context.priorBest, exerciseSets)}
+        timings={timings}
+        expanded={expanded.has(exerciseId)}
+        onToggle={() => toggle(exerciseId)}
+        onComplete={async (values) => {
+          if (isToday) {
+            const now = Date.now();
+            const startedAt = restTimer.onSetCompleted(now);
+            await addSets(db, workout.id, exerciseId, [{ ...values, startedAt, completedAt: now }]);
+          } else {
+            // 過去日の後入力は、実際の時刻がわからないので記録しない
+            await addSets(db, workout.id, exerciseId, [values]);
+          }
+          await reloadSets();
+        }}
+        onUpdate={async (setId, values) => {
+          await updateSet(db, setId, values);
+          await reloadSets();
+        }}
+        onDelete={async (setId) => {
+          await deleteSet(db, setId);
+          await reloadSets();
+        }}
+        onOpenHistory={() =>
+          router.push({ pathname: '/workout/exercise/[id]', params: { id: exerciseId } })
+        }
+      />
+    );
+  };
+
+  const minutes = workoutMinutes(sets);
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <RestTimerBar />
@@ -173,84 +243,81 @@ export default function WorkoutScreen() {
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
-        <DateTimeField
-          mode="date"
-          value={fromLocalDateString(workout.date)}
-          onChange={changeDate}
-        />
+        <Card>
+          <DateTimeField
+            mode="date"
+            value={fromLocalDateString(workout.date)}
+            onChange={changeDate}
+          />
+          <View style={styles.stats}>
+            <Stat label="総ボリューム" value={formatVolume(totalVolume(sets))} unit="kg" />
+            <Stat label="セット" value={String(sets.length)} />
+            <Stat label="時間" value={minutes != null ? String(minutes) : '-'} unit="分" />
+          </View>
+        </Card>
 
-        {exerciseIds.map((exerciseId) => {
-          const exerciseSets = sets.filter((s) => s.exerciseId === exerciseId);
-          const context = contexts.get(exerciseId);
-          // 「前回」の読み込みを待ってから出す(入力欄の初期値に使うため)
-          if (!context) {
-            return null;
-          }
-          return (
-            <ExerciseBlock
-              key={exerciseId}
-              name={exercises.get(exerciseId)?.name ?? '(削除された種目)'}
-              sets={exerciseSets}
-              previous={context.previous}
-              prSetIds={personalRecordSetIds(context.priorBest, exerciseSets)}
-              timings={timings}
-              onAdd={async (values, { copied }) => {
-                if (copied || !isToday) {
-                  // 前回のコピーや過去日の入力は、実際の時刻がわからないので記録しない
-                  await addSets(db, workout.id, exerciseId, values);
-                } else {
-                  const now = Date.now();
-                  const startedAt = restTimer.onSetCompleted(now);
-                  await addSets(db, workout.id, exerciseId, [
-                    { ...values[0], startedAt, completedAt: now },
-                  ]);
-                }
-                await reloadSets();
-              }}
-              onUpdate={async (setId, values) => {
-                await updateSet(db, setId, values);
-                await reloadSets();
-              }}
-              onDelete={async (setId) => {
-                await deleteSet(db, setId);
-                await reloadSets();
-              }}
-              onOpenHistory={() =>
-                router.push({ pathname: '/workout/exercise/[id]', params: { id: exerciseId } })
-              }
-            />
-          );
-        })}
+        {topIds.map(renderCard)}
 
-        {exerciseIds.length === 0 && (
-          <ThemedText themeColor="textSecondary">種目を追加して記録を始めましょう</ThemedText>
+        {topIds.length === 0 && (
+          <ThemedText themeColor="textSecondary">
+            {restIds.length > 0
+              ? '下の種目をタップして開き、終わったセットにチェックを付けていきましょう'
+              : '「種目を追加」から記録を始めましょう'}
+          </ThemedText>
         )}
 
-        <Button
-          title={exerciseIds.length === 0 ? '種目を追加' : 'ほかの種目を追加'}
-          variant={exerciseIds.length === 0 ? 'primary' : 'secondary'}
-          onPress={() => setPickerVisible(true)}
-        />
-
-        {sets.length > 0 && <Button title="トレーニング終了" onPress={finish} />}
+        {restIds.length > 0 && (
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            記録のある種目
+          </ThemedText>
+        )}
+        {restIds.map(renderCard)}
 
         <TextField label="メモ(任意)" value={note} onChangeText={changeNote} multiline />
 
         <Button title="このワークアウトを削除" variant="danger" onPress={confirmDelete} />
       </ScrollView>
 
+      <View
+        style={[
+          styles.bottomBar,
+          { backgroundColor: theme.background, borderTopColor: theme.border },
+        ]}>
+        <View style={styles.flex}>
+          <Button title="種目を追加" variant="secondary" onPress={() => setPickerVisible(true)} />
+        </View>
+        <View style={styles.flex}>
+          <Button title="トレーニング終了" onPress={finish} disabled={sets.length === 0} />
+        </View>
+      </View>
+
       {pickerVisible && (
         <ExercisePicker
-          excludeIds={exerciseIds}
+          excludeIds={topIds}
           onClose={() => setPickerVisible(false)}
           onSelect={(exercise) => {
             setExercises((prev) => new Map(prev).set(exercise.id, exercise));
             setPendingIds((prev) => [...prev, exercise.id]);
+            setExpanded((prev) => new Set(prev).add(exercise.id));
             setPickerVisible(false);
           }}
         />
       )}
     </KeyboardAvoidingView>
+  );
+}
+
+function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <View style={styles.stat}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <ThemedText style={styles.statValue}>
+        {value}
+        {unit && value !== '-' && <ThemedText type="small"> {unit}</ThemedText>}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -264,5 +331,25 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+  },
+  stats: {
+    flexDirection: 'row',
+  },
+  stat: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  statValue: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: 700,
+    fontVariant: ['tabular-nums'],
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 });

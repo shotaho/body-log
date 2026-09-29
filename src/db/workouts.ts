@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { BodyPart } from '@/db/migrations';
 import { round1 } from '@/lib/decimal';
+import { assumedTrainingTime } from '@/lib/recovery';
 
 export type Exercise = { id: number; name: string; bodyPart: BodyPart; isPreset: boolean };
 
@@ -366,4 +367,33 @@ export async function listBodyPartDailyVolume(db: SQLiteDatabase): Promise<BodyP
      GROUP BY w.date, e.body_part ORDER BY w.date`
   );
   return rows.map((r) => ({ date: r.date, bodyPart: r.body_part, volumeKg: r.volume }));
+}
+
+/**
+ * 部位ごとに最後に鍛えた時刻(since 以降の日付のワークアウトから)。
+ * セットの完了時刻があればその最後、なければ(過去日の後入力など)その日の正午とみなす。
+ */
+export async function getLastTrainedByBodyPart(
+  db: SQLiteDatabase,
+  since: string
+): Promise<Partial<Record<BodyPart, number>>> {
+  const rows = await db.getAllAsync<{
+    body_part: BodyPart;
+    date: string;
+    completed_at: number | null;
+  }>(
+    `SELECT e.body_part, w.date, MAX(s.completed_at) AS completed_at
+     FROM workout_set s
+     JOIN workout w ON w.id = s.workout_id
+     JOIN exercise e ON e.id = s.exercise_id
+     WHERE w.date >= ?
+     GROUP BY w.id, e.body_part`,
+    since
+  );
+  const result: Partial<Record<BodyPart, number>> = {};
+  for (const r of rows) {
+    const at = r.completed_at ?? assumedTrainingTime(r.date);
+    result[r.body_part] = Math.max(result[r.body_part] ?? 0, at);
+  }
+  return result;
 }

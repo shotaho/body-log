@@ -6,6 +6,7 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
 import { pickDate } from '@/components/date-time-field';
+import { RecoveryCard } from '@/components/recovery-card';
 import { ThemedText } from '@/components/themed-text';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { listWorkouts, type WorkoutSummary } from '@/db/workouts';
@@ -51,6 +52,7 @@ export default function WorkoutListScreen() {
           />
         </View>
       </View>
+      <RecoveryCard />
       <Card>
         <LinkRow label="種目別の記録・グラフ" onPress={() => router.push('/workout/exercises')} />
         <View style={[styles.separator, { backgroundColor: theme.border }]} />

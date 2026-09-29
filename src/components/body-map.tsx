@@ -11,11 +11,24 @@ const VIEW_H = 260;
 
 type Levels = Record<BodyPart, number>;
 
+type Legend = { idle: string; low: string; high: string };
+
+const DEFAULT_LEGEND: Legend = { idle: '未実施', low: '少', high: '多' };
+
 /**
- * 前面・背面の全身イラスト。その日鍛えた部位を、ボリュームの段階(0〜4)に応じた濃さで塗る。
+ * 前面・背面の全身イラスト。部位を段階(0〜4)に応じた濃さで塗る(その日のボリューム、回復状態など)。
  * 部位は種目マスタの区分(胸・背中・脚・肩・腕・腹)。「その他」はイラストに出さない。
  */
-export function BodyMap({ levels }: { levels: Levels }) {
+export function BodyMap({
+  levels,
+  legend = DEFAULT_LEGEND,
+  description = '鍛えた部位',
+}: {
+  levels: Levels;
+  legend?: Legend;
+  /** 読み上げ用: 塗った部位の説明 */
+  description?: string;
+}) {
   const theme = useTheme();
   const ramp = [theme.bodyIdle, theme.body1, theme.body2, theme.body3, theme.body4];
   const fill = (part: BodyPart) => ramp[levels[part]] ?? theme.bodyIdle;
@@ -25,7 +38,7 @@ export function BodyMap({ levels }: { levels: Levels }) {
   return (
     <View
       accessible
-      accessibilityLabel={`全身イラスト。鍛えた部位: ${
+      accessibilityLabel={`全身イラスト。${description}: ${
         trained.length > 0 ? trained.map((p) => BODY_PARTS[p]).join('、') : 'なし'
       }`}>
       <View style={styles.figures}>
@@ -63,15 +76,15 @@ export function BodyMap({ levels }: { levels: Levels }) {
         </Figure>
       </View>
       <View style={styles.legend}>
-        <LegendSwatch color={neutral} label="未実施" />
+        <LegendSwatch color={neutral} label={legend.idle} />
         <ThemedText type="small" themeColor="textSecondary">
-          少
+          {legend.low}
         </ThemedText>
         {ramp.slice(1).map((c) => (
           <View key={c} style={[styles.swatch, { backgroundColor: c }]} />
         ))}
         <ThemedText type="small" themeColor="textSecondary">
-          多
+          {legend.high}
         </ThemedText>
       </View>
     </View>

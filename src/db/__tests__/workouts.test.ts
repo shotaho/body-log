@@ -8,6 +8,7 @@ import {
   findOrCreateWorkout,
   finishWorkout,
   getExerciseHistory,
+  getLastTrainedByBodyPart,
   getPreviousSession,
   getWorkout,
   insertExercise,
@@ -184,5 +185,23 @@ describe('v3: 時刻・終了・最近の種目・部位別ボリューム', () 
       { date: '2026-09-20', bodyPart: 'legs', volumeKg: 500 },
       { date: '2026-09-22', bodyPart: 'chest', volumeKg: 350 },
     ]);
+  });
+});
+
+describe('回復状態', () => {
+  it('部位ごとに最後に鍛えた時刻(完了時刻がなければその日の正午)', async () => {
+    const old = await findOrCreateWorkout(db, '2026-09-01');
+    await addSets(db, old, squat, [{ weightKg: 100, reps: 5 }]);
+    const w1 = await findOrCreateWorkout(db, '2026-09-20');
+    await addSets(db, w1, squat, [{ weightKg: 100, reps: 5 }]);
+    const w2 = await findOrCreateWorkout(db, '2026-09-22');
+    await addSets(db, w2, bench, [
+      { weightKg: 60, reps: 10, completedAt: 1_000 },
+      { weightKg: 60, reps: 8, completedAt: 2_000 },
+    ]);
+    expect(await getLastTrainedByBodyPart(db, '2026-09-15')).toEqual({
+      legs: new Date(2026, 8, 20, 12).getTime(),
+      chest: 2_000,
+    });
   });
 });
