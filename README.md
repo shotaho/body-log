@@ -25,6 +25,10 @@ npx expo run:android   # Development Build をビルドして実機/エミュレ
 
 レストタイマーの音(`assets/sounds/*.wav`)は `node scripts/generate-beeps.mjs` で生成している。
 
+## アイコン
+
+アプリアイコン・スプラッシュ・favicon(`assets/images/`)は、元画像 `assets/source/icon-original.jpg` から `python3 scripts/generate-icons.py` で生成している(Pillow が必要)。
+
 ## チェック
 
 ```bash
